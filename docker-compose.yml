@@ -1,0 +1,146 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # Core API Server (Node/Express with PM2)
+  # ==========================================
+  api-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stake_api_server
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://stake_admin:SecureStakeDbPass123!@postgres:5432/stake_db?schema=public
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=super_secret_jwt_key_stake_platform_777
+      - MASTER_MNEMONIC_ENCRYPTED_KEY=aes_secure_passphrase_for_mnemonic_encryption_999
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/usr/src/app/logs
+    restart: always
+    networks:
+      - stake-network
+
+  # ==========================================
+  # Asynchronous Queue Workers (Discrete Services)
+  # ==========================================
+  deposit-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stake_deposit_worker
+    command: pm2-runtime start dist/workers/depositWorker/index.js --name deposit-worker
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://stake_admin:SecureStakeDbPass123!@postgres:5432/stake_db?schema=public
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    networks:
+      - stake-network
+
+  withdrawal-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stake_withdrawal_worker
+    command: pm2-runtime start dist/workers/withdrawWorker/index.js --name withdrawal-worker
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://stake_admin:SecureStakeDbPass123!@postgres:5432/stake_db?schema=public
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    networks:
+      - stake-network
+
+  sweep-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stake_sweep_worker
+    command: pm2-runtime start dist/workers/sweepWorker/index.js --name sweep-worker
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://stake_admin:SecureStakeDbPass123!@postgres:5432/stake_db?schema=public
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    networks:
+      - stake-network
+
+  # ==========================================
+  # Relational Database (PostgreSQL)
+  # ==========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: stake_postgres
+    environment:
+      - POSTGRES_USER=stake_admin
+      - POSTGRES_PASSWORD=SecureStakeDbPass123!
+      - POSTGRES_DB=stake_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stake_admin -d stake_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    networks:
+      - stake-network
+
+  # ==========================================
+  # In-Memory Cache & Message Broker (Redis)
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: stake_redis
+    command: redis-server --appendonly yes --requirepass SecureRedisPass777!
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "SecureRedisPass777!", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    networks:
+      - stake-network
+
+# ==========================================
+# Network and Persistent Storage Configuration
+# ==========================================
+networks:
+  stake-network:
+    driver: bridge
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local

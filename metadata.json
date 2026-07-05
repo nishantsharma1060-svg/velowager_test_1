@@ -1,0 +1,6 @@
+{
+  "name": "VeloWager Pro",
+  "description": "VeloWager Pro is a premium, high-velocity full-stack online gaming platform featuring user authentication, a unified wallet system, an advanced admin panel, and an immersive Color Trading game.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
