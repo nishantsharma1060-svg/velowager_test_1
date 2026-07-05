@@ -4,12 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 // Load environment variables from .env and fall back to .env.example if .env doesn't exist
-if (fs.existsSync('.env')) {
-  dotenv.config({ path: '.env' });
-}
-if (fs.existsSync('.env.example')) {
-  dotenv.config({ path: '.env.example' });
-}
+dotenv.config();
 
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
@@ -18,8 +13,7 @@ import { seedIfNeeded } from './src/db/seed.ts';
 import { gameEngine } from './server/services/GameEngine.js';
 import apiRouter from './server/api.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const distPath = path.join(process.cwd(), "dist");
 
 async function startServer() {
   // Initialize and seed PostgreSQL database
@@ -30,7 +24,7 @@ async function startServer() {
   const app = express();
   app.set('trust proxy', true);
   const isProd = process.env.NODE_ENV === 'production';
-  const port = 3000;
+ const port = Number(process.env.PORT) || 3000;
 
   // JSON and URL-encoded body parsing middlewares
   app.use(express.json());

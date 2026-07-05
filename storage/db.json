@@ -60,6 +60,30 @@
       "isEnabled": true,
       "minBet": 10,
       "maxBet": 50000
+    },
+    {
+      "id": "mine",
+      "name": "Mines",
+      "description": "Avoid hidden mines on a 5x5 grid and cash out when your multiplier increases!",
+      "isEnabled": true,
+      "minBet": 10,
+      "maxBet": 50000
+    },
+    {
+      "id": "crash",
+      "name": "Crash",
+      "description": "Watch the rocket rise and multiplier grow. Cash out before it crashes!",
+      "isEnabled": true,
+      "minBet": 10,
+      "maxBet": 50000
+    },
+    {
+      "id": "flip",
+      "name": "Coin Flip",
+      "description": "Flip a coin (Heads or Tails) with a transparent, direct payout!",
+      "isEnabled": true,
+      "minBet": 10,
+      "maxBet": 50000
     }
   ],
   "rounds": [
@@ -1091,6 +1115,67 @@
       "totalWinAmount": 0,
       "createdAt": "2026-06-29T13:03:30.919Z",
       "closedAt": "2026-06-29T13:03:55.943Z"
+    },
+    {
+      "id": "round-7474oufjl",
+      "gameId": "color-trading",
+      "gameMode": "30s",
+      "periodNumber": "2026070530S0014",
+      "status": "settled",
+      "resultColor": "red",
+      "resultNumber": 2,
+      "totalBetAmount": 0,
+      "totalWinAmount": 0,
+      "resultStrategy": "fair",
+      "createdAt": "2026-07-05T18:37:22.828Z",
+      "closedAt": "2026-07-05T18:37:25.846Z",
+      "settledAt": "2026-07-05T18:37:30.898Z"
+    },
+    {
+      "id": "round-bg7d9ki7g",
+      "gameId": "color-trading",
+      "gameMode": "1m",
+      "periodNumber": "202607051M0007",
+      "status": "closed",
+      "totalBetAmount": 0,
+      "totalWinAmount": 0,
+      "resultStrategy": "fair",
+      "createdAt": "2026-07-05T18:37:22.830Z",
+      "closedAt": "2026-07-05T18:37:55.332Z"
+    },
+    {
+      "id": "round-9pgv23kyg",
+      "gameId": "color-trading",
+      "gameMode": "3m",
+      "periodNumber": "202607053M0002",
+      "status": "betting",
+      "totalBetAmount": 0,
+      "totalWinAmount": 0,
+      "resultStrategy": "fair",
+      "createdAt": "2026-07-05T18:37:22.832Z"
+    },
+    {
+      "id": "round-k0pdzuk1u",
+      "gameId": "color-trading",
+      "gameMode": "5m",
+      "periodNumber": "202607055M0001",
+      "status": "betting",
+      "totalBetAmount": 0,
+      "totalWinAmount": 0,
+      "resultStrategy": "fair",
+      "createdAt": "2026-07-05T18:37:22.833Z"
+    },
+    {
+      "id": "round-ambclxwfi",
+      "gameId": "color-trading",
+      "gameMode": "30s",
+      "periodNumber": "2026070530S0015",
+      "status": "closed",
+      "totalBetAmount": 0,
+      "totalWinAmount": 0,
+      "resultStrategy": "fair",
+      "createdAt": "2026-07-05T18:37:30.893Z",
+      "closedAt": "2026-07-05T18:37:55.331Z"
     }
   ],
   "bets": [],
@@ -1132,5 +1217,7 @@
       "action": "Platform initialized with seed data",
       "createdAt": "2026-06-29T12:51:13.396Z"
     }
-  ]
+  ],
+  "coupons": [],
+  "vaultTransfers": []
 }

@@ -24,8 +24,7 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Prisma
-prisma/dev.db
+
 
 # PM2
 .pm2/
