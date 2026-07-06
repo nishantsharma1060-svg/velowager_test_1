@@ -48,7 +48,7 @@ export class KeyManager {
     // Sandbox fallback returns local environment configurations
     const envValue = process.env[secretName];
     if (envValue) return envValue;
-    return `mock-secret-value-for-${secretName}`;
+    throw new Error(`${secretName} is not configured in the environment`);
   }
 
   /**

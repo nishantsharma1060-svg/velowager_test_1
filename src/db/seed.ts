@@ -1,5 +1,8 @@
 import { db } from './index.ts';
 import { platformSettings, games, users, wallets, referrals, notifications } from './schema.ts';
+import { eq } from 'drizzle-orm';
+import { hashPassword } from '../../server/security/password.ts';
+import crypto from 'crypto';
 
 export async function seedIfNeeded() {
   try {
@@ -62,7 +65,7 @@ export async function seedIfNeeded() {
         {
           id: 'admin-1',
           mobile: '9999999999',
-          passwordHash: '25e8158b90108aaf2bd1f0634da4a50adb335f36dafe8aa896cfa3df22efeb9f', // 'admin123'
+          passwordHash: hashPassword(process.env.MASTER_ADMIN_PASSWORD || crypto.randomBytes(32).toString('hex')),
           referralCode: 'ADMINREF',
           status: 'active',
           isAgent: true
@@ -70,13 +73,22 @@ export async function seedIfNeeded() {
         {
           id: 'user-1',
           mobile: '8888888888',
-          passwordHash: '25e8158b90108aaf2bd1f0634da4a50adb335f36dafe8aa896cfa3df22efeb9f', // 'admin123'
+          passwordHash: hashPassword(crypto.randomBytes(32).toString('hex')),
           referralCode: 'USERONE',
           referredByCode: 'ADMINREF',
           status: 'active',
           isAgent: false
         }
       ]).onConflictDoNothing();
+
+      // Promote the reserved account to master admin. Credentials are supplied
+      // through Render secrets and are never committed to the repository.
+      const masterUsername = process.env.MASTER_ADMIN_USERNAME || 'masteradmin';
+      const masterEmail = process.env.MASTER_ADMIN_EMAIL || 'master@velowager.local';
+      const masterPassword = process.env.MASTER_ADMIN_PASSWORD;
+      const masterUpdate: any = { username: masterUsername, email: masterEmail, adminRole: 'master', adminPermissions: ['*'], status: 'active' };
+      if (masterPassword) masterUpdate.passwordHash = hashPassword(masterPassword);
+      await db.update(users).set(masterUpdate).where(eq(users.id, 'admin-1'));
 
       // 4. Seed Wallets
       await db.insert(wallets).values([

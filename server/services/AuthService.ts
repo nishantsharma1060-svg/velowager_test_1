@@ -3,6 +3,7 @@ import { UserRepository } from '../repositories/UserRepository.js';
 import { WalletRepository } from '../repositories/WalletRepository.js';
 import { ReferralRepository } from '../repositories/ReferralRepository.js';
 import { User, db } from '../db.js';
+import { hashPassword, verifyPassword } from '../security/password.js';
 
 // Simple active sessions cache in memory
 export const activeSessions = new Map<string, { userId: string, expiresAt: number }>();
@@ -13,10 +14,6 @@ export class AuthService {
   private userRepo = new UserRepository();
   private walletRepo = new WalletRepository();
   private referralRepo = new ReferralRepository();
-
-  private hashPassword(password: string): string {
-    return crypto.createHash('sha256').update(password + 'PLATFORM_SALT_2026').digest('hex');
-  }
 
   async generateOtp(mobile: string): Promise<string> {
     // Generate a secure random 6-digit OTP to prevent predictable session takeovers
@@ -61,7 +58,7 @@ export class AuthService {
     // Generate unique referral code for the new user
     const referralCode = 'REF' + Math.random().toString(36).substr(2, 6).toUpperCase();
 
-    const passwordHash = this.hashPassword(password);
+    const passwordHash = hashPassword(password);
     
     // Create the user
     const newUser = await this.userRepo.create({
@@ -139,10 +136,11 @@ export class AuthService {
       throw new Error('Your account has been banned. Please contact support.');
     }
 
-    const inputHash = this.hashPassword(password);
-    if (user.passwordHash !== inputHash) {
+    const passwordCheck = verifyPassword(password, user.passwordHash);
+    if (!passwordCheck.valid) {
       throw new Error('Invalid username, email, mobile, or password');
     }
+    if (passwordCheck.needsUpgrade) await this.userRepo.updatePasswordHash(user.id, hashPassword(password));
 
     // Force single active session: logout previous sessions of this user
     for (const [token, session] of activeSessions.entries()) {
@@ -188,7 +186,7 @@ export class AuthService {
       throw new Error('Mobile number not found');
     }
 
-    const passwordHash = this.hashPassword(newPassword);
+    const passwordHash = hashPassword(newPassword);
     db.executeTransaction((d) => {
       const idx = d.users.findIndex(u => u.mobile === mobile);
       if (idx !== -1) {

@@ -11,3 +11,17 @@ services:
         value: production
       - key: DATABASE_URL
         sync: false
+      - key: MASTER_ADMIN_USERNAME
+        value: masteradmin
+      - key: MASTER_ADMIN_EMAIL
+        value: master@velowager.local
+      - key: MASTER_ADMIN_PASSWORD
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: PAYMENT_CALLBACK_SECRET
+        generateValue: true

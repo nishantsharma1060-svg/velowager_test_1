@@ -6,6 +6,8 @@ import path from 'path';
 
 
 import express from 'express';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { createServer as createViteServer } from 'vite';
 import { db } from './server/db.js';
 import { seedIfNeeded } from './src/db/seed.ts';
@@ -16,19 +18,35 @@ async function startServer() {
   if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL is required. Add it to the Render service environment variables.');
   }
+  if (process.env.NODE_ENV === 'production') {
+    const required = ['APP_URL', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'MASTER_ADMIN_PASSWORD', 'PAYMENT_CALLBACK_SECRET'];
+    const missing = required.filter(key => !process.env[key]);
+    if (missing.length) throw new Error(`Missing required production environment variables: ${missing.join(', ')}`);
+  }
 
   // Initialize and seed PostgreSQL database
   await seedIfNeeded();
   await db.init();
 
   const app = express();
-  app.set('trust proxy', true);
+  // Render terminates TLS one proxy hop in front of the Node process.
+  app.set('trust proxy', 1);
   const isProd = process.env.NODE_ENV === 'production';
  const port = Number(process.env.PORT) || 3000;
 
+  app.use(helmet({ contentSecurityPolicy: false }));
+  if (isProd) {
+    app.use((_req, res, next) => {
+      res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
+      next();
+    });
+  }
+
+  app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, limit: 50, standardHeaders: 'draft-7', legacyHeaders: false }));
+
   // JSON and URL-encoded body parsing middlewares
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
   // Render uses this endpoint to verify that the web process is accepting traffic.
   app.get('/health', (_req, res) => {

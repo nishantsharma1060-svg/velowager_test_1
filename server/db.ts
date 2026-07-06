@@ -59,6 +59,8 @@ export interface User {
   referredByCode?: string;
   status: 'active' | 'frozen' | 'banned';
   isAgent?: boolean;
+  adminRole?: 'master' | 'operations' | 'finance' | 'support' | 'games' | 'viewer';
+  adminPermissions?: string[];
   signupIp?: string;
   bankName?: string;
   bankAccount?: string;
@@ -265,7 +267,7 @@ class PostgresDatabase {
             name: 'JazPays',
             apiUrl: process.env.JAZPAYS_URL || 'https://api.jazpays.com/v1/create',
             merchantId: process.env.JAZPAYS_MERCHANT_ID || '100222071',
-            apiKey: process.env.JAZPAYS_API_KEY || '3c09934f959e7a358353cb96eaef06c5',
+            apiKey: process.env.JAZPAYS_API_KEY || '',
             isEnabled: true,
             isDefault: true,
             minAmount: 100,

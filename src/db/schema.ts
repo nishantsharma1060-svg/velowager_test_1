@@ -11,6 +11,8 @@ export const users = pgTable('users', {
   referredByCode: text('referred_by_code'),
   status: text('status').$type<'active' | 'frozen' | 'banned'>().default('active').notNull(),
   isAgent: boolean('is_agent').default(false).notNull(),
+  adminRole: text('admin_role').$type<'master' | 'operations' | 'finance' | 'support' | 'games' | 'viewer'>(),
+  adminPermissions: jsonb('admin_permissions').$type<string[]>().default([]).notNull(),
   signupIp: text('signup_ip'),
   
   // Bank details required before withdrawal
@@ -193,5 +195,4 @@ export const coupons = pgTable('coupons', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   redeemedAt: timestamp('redeemed_at'),
 });
-
 

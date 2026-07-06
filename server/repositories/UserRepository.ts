@@ -1,9 +1,34 @@
 import { db as pgDb } from '../../src/db/index.ts';
 import { users } from '../../src/db/schema.ts';
 import { User, db as fileDb } from '../db.js';
-import { eq } from 'drizzle-orm';
+import crypto from 'crypto';
+import { eq, isNotNull } from 'drizzle-orm';
 
 export class UserRepository {
+  async getAdmins(): Promise<User[]> {
+    const result = await pgDb.select().from(users).where(isNotNull(users.adminRole));
+    return result.map(u => ({ ...u, createdAt: u.createdAt.toISOString() })) as User[];
+  }
+
+  async createAdmin(input: { username: string; email: string; passwordHash: string; role: Exclude<NonNullable<User['adminRole']>, 'master'>; permissions: string[] }): Promise<User> {
+    const suffix = crypto.randomBytes(6).toString('hex');
+    const now = new Date();
+    const row = {
+      id: `admin-${suffix}`,
+      mobile: `admin-${suffix}`,
+      username: input.username,
+      email: input.email,
+      passwordHash: input.passwordHash,
+      referralCode: `ADM${suffix.toUpperCase()}`,
+      status: 'active' as const,
+      isAgent: false,
+      adminRole: input.role,
+      adminPermissions: input.permissions,
+      createdAt: now
+    };
+    await pgDb.insert(users).values(row);
+    return { ...row, createdAt: now.toISOString() } as User;
+  }
   async findById(id: string): Promise<User | null> {
     if (fileDb.isOffline) {
       const u = fileDb.users.find(x => x.id === id);
@@ -111,6 +136,8 @@ export class UserRepository {
       referredByCode: user.referredByCode || null,
       status: user.status || 'active',
       isAgent: user.isAgent || false,
+      adminRole: user.adminRole || null,
+      adminPermissions: user.adminPermissions || [],
       signupIp: user.signupIp || null,
       bankName: (user as any).bankName || null,
       bankAccount: (user as any).bankAccount || null,
@@ -166,6 +193,10 @@ export class UserRepository {
       console.error('UserRepository updateStatus failed:', err);
       throw new Error('Database operation failed', { cause: err });
     }
+  }
+
+  async updatePasswordHash(id: string, passwordHash: string): Promise<void> {
+    await pgDb.update(users).set({ passwordHash }).where(eq(users.id, id));
   }
 
   async getAllUsers(): Promise<User[]> {

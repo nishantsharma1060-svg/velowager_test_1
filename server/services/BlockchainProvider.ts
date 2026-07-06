@@ -32,7 +32,8 @@ export abstract class BaseBlockchainProvider implements BlockchainProvider {
   abstract name: string;
   
   protected getMnemonic(): string {
-    return process.env.CRYPTO_MASTER_MNEMONIC || 'test test test test test test test test test test test junk';
+    if (!process.env.CRYPTO_MASTER_MNEMONIC) throw new Error('CRYPTO_MASTER_MNEMONIC is required');
+    return process.env.CRYPTO_MASTER_MNEMONIC;
   }
 
   abstract generateAddress(index?: number): Promise<string>;

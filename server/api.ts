@@ -8,10 +8,11 @@ import { GameRepository } from './repositories/GameRepository.js';
 import { ReferralRepository } from './repositories/ReferralRepository.js';
 import { WalletRepository } from './repositories/WalletRepository.js';
 import { gameEngine } from './services/GameEngine.js';
-import { authenticateToken, requireAdmin, AuthenticatedRequest } from './middleware/auth.js';
+import { authenticateToken, requireAdmin, requireMasterAdmin, AuthenticatedRequest } from './middleware/auth.js';
 import { cryptoService } from './services/CryptoService.js';
 import { TwoFactorService } from './services/TwoFactorService.js';
 import { emailService } from './services/EmailService.js';
+import { hashPassword } from './security/password.js';
 
 const router = Router();
 
@@ -22,7 +23,8 @@ const gameRepo = new GameRepository();
 const referralRepo = new ReferralRepository();
 const twoFactorService = new TwoFactorService();
 
-const PAYMENT_SECRET = process.env.PAYMENT_CALLBACK_SECRET || 'win_go_platform_secret_key_2026_xyz';
+const PAYMENT_SECRET = process.env.PAYMENT_CALLBACK_SECRET || '';
+const googleOAuthStates = new Map<string, number>();
 
 function getAppUrl(req: any): string {
   const envUrl = process.env.APP_URL;
@@ -219,7 +221,7 @@ router.post('/auth/login', async (req, res) => {
 
   try {
     const result = await authService.login(identifier, password);
-    const isAdmin = result.user.id.startsWith('admin-') || result.user.mobile === '9999999999';
+    const isAdmin = !!result.user.adminRole || result.user.id.startsWith('admin-') || result.user.mobile === '9999999999';
 
     if (isAdmin && result.user.twoFactorEnabled) {
       if (!code) {
@@ -252,6 +254,8 @@ router.post('/auth/login', async (req, res) => {
         status: result.user.status,
         createdAt: result.user.createdAt,
         twoFactorEnabled: result.user.twoFactorEnabled
+        ,adminRole: result.user.adminRole,
+        adminPermissions: result.user.adminPermissions || []
       }
     });
   } catch (err: any) {
@@ -291,132 +295,32 @@ router.post('/auth/reset-password', async (req, res) => {
 // Google OAuth Authorization URL Request
 router.get('/auth/google/url', (req, res) => {
   const googleClientId = process.env.GOOGLE_CLIENT_ID;
+  const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const appUrl = getAppUrl(req);
-  
-  if (googleClientId && googleClientId !== 'MOCK') {
-    // Construct real Google OAuth2 authorize URL
-    const params = new URLSearchParams({
-      client_id: googleClientId,
-      redirect_uri: `${appUrl}/api/auth/google/callback`,
-      response_type: 'code',
-      scope: 'openid email profile',
-      prompt: 'select_account',
-    });
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-    res.json({ url: authUrl, isMock: false });
-  } else {
-    // Point to gorgeous simulated selector
-    res.json({ url: `${appUrl}/api/auth/google/mock-screen`, isMock: true });
+
+  if (!googleClientId || !googleClientSecret) {
+    res.status(503).json({ error: 'Google Sign-In is not configured on this server' });
+    return;
   }
-});
-
-// Beautiful Google Account Selection Simulator
-router.get('/auth/google/mock-screen', (req, res) => {
-  const appUrl = getAppUrl(req);
-  res.send(`
-    <html>
-      <head>
-        <title>Google Sign-In Simulator</title>
-        <script src="https://cdn.tailwindcss.com"></script>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-        <style>
-          body { font-family: 'Inter', sans-serif; }
-        </style>
-      </head>
-      <body class="bg-[#090d11] text-zinc-100 flex items-center justify-center min-h-screen p-4">
-        <div class="w-full max-w-md bg-[#12161b] border border-zinc-800 rounded-2xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-          <div class="absolute top-0 left-0 w-32 h-32 bg-rose-500/5 rounded-full blur-3xl pointer-events-none"></div>
-          
-          <div class="flex flex-col items-center text-center mb-6">
-            <!-- Branded simulated logo -->
-            <div class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-md border border-zinc-200 mb-3">
-              <svg viewBox="0 0 24 24" class="w-6 h-6">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.85z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.85c.87-2.6 3.3-4.53 6.16-4.53z"/>
-              </svg>
-            </div>
-            <h2 class="text-xl font-bold text-white tracking-tight text-sans">Google Accounts</h2>
-            <p class="text-xs text-zinc-400 mt-1">Simulated Single Sign-On Portal</p>
-          </div>
-
-          <div class="space-y-3 mb-6">
-            <p class="text-xs font-semibold text-zinc-500 uppercase tracking-wider px-1">Choose a demo account to sign in:</p>
-            
-            <a href="${appUrl}/api/auth/google/callback?code=mock_code_0" class="block w-full flex items-center justify-between p-3.5 bg-[#181d24] hover:bg-[#1e252e] border border-zinc-800/80 rounded-xl transition group">
-              <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center font-black text-xs font-sans">
-                  AC
-                </div>
-                <div class="text-left">
-                  <div class="text-xs font-bold text-white group-hover:text-rose-400 transition">Alex Carter</div>
-                  <div class="text-[10px] text-zinc-400 font-mono">alex.carter@gmail.com</div>
-                </div>
-              </div>
-              <span class="text-[9px] uppercase bg-rose-500/10 border border-rose-500/20 text-rose-400 px-2 py-0.5 rounded-full font-black tracking-widest">Demo User</span>
-            </a>
-
-            <a href="${appUrl}/api/auth/google/callback?code=mock_code_1" class="block w-full flex items-center justify-between p-3.5 bg-[#181d24] hover:bg-[#1e252e] border border-zinc-800/80 rounded-xl transition group">
-              <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center font-black text-xs font-sans">
-                  SJ
-                </div>
-                <div class="text-left">
-                  <div class="text-xs font-bold text-white group-hover:text-rose-400 transition">Sarah Jenkins</div>
-                  <div class="text-[10px] text-zinc-400 font-mono">sarah.j@gmail.com</div>
-                </div>
-              </div>
-              <span class="text-[9px] uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-black tracking-widest">VIP Member</span>
-            </a>
-
-            <a href="${appUrl}/api/auth/google/callback?code=mock_code_2" class="block w-full flex items-center justify-between p-3.5 bg-[#181d24] hover:bg-[#1e252e] border border-zinc-800/80 rounded-xl transition group">
-              <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center font-black text-xs font-sans">
-                  DM
-                </div>
-                <div class="text-left">
-                  <div class="text-xs font-bold text-white group-hover:text-rose-400 transition">Devon Miller</div>
-                  <div class="text-[10px] text-zinc-400 font-mono">devon.m@gmail.com</div>
-                </div>
-              </div>
-              <span class="text-[9px] uppercase bg-amber-500/10 border border-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-black tracking-widest">Moderator</span>
-            </a>
-          </div>
-
-          <div class="border-t border-zinc-800 pt-4 text-center">
-            <p class="text-[10px] text-zinc-500 leading-relaxed">
-              Google API credentials are not set in the workspace. This developer simulator runs entirely locally on your sandboxed container to test real SSO login, signup, and state transitions.
-            </p>
-          </div>
-        </div>
-      </body>
-    </html>
-  `);
+  const state = crypto.randomBytes(32).toString('hex');
+  googleOAuthStates.set(state, Date.now() + 10 * 60 * 1000);
+  const params = new URLSearchParams({ client_id: googleClientId, redirect_uri: `${appUrl}/api/auth/google/callback`, response_type: 'code', scope: 'openid email profile', prompt: 'select_account', state });
+  res.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
 });
 
 // Google OAuth Redirect Callback Endpoint
 router.get(['/auth/google/callback', '/auth/google/callback/'], async (req, res) => {
   const code = req.query.code as string;
-  if (!code) {
-    res.status(400).send('Authentication code is missing');
+  const state = req.query.state as string;
+  const stateExpiry = googleOAuthStates.get(state);
+  googleOAuthStates.delete(state);
+  if (!code || !state || !stateExpiry || stateExpiry < Date.now()) {
+    res.status(400).send('Invalid or expired Google authentication request');
     return;
   }
 
   try {
     let profile: { email: string; name: string; id: string } = { email: '', name: '', id: '' };
-
-    if (code.startsWith('mock_code_')) {
-      // Handle Local Simulator Profiles
-      const index = code.split('_').pop();
-      if (index === '0') {
-        profile = { name: 'Alex Carter', email: 'alex.carter@gmail.com', id: 'google_mock_1111' };
-      } else if (index === '1') {
-        profile = { name: 'Sarah Jenkins', email: 'sarah.j@gmail.com', id: 'google_mock_2222' };
-      } else {
-        profile = { name: 'Devon Miller', email: 'devon.m@gmail.com', id: 'google_mock_3333' };
-      }
-    } else {
       // Real Google Token & Profile retrieval
       const appUrl = getAppUrl(req);
       const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -445,12 +349,12 @@ router.get(['/auth/google/callback', '/auth/google/callback/'], async (req, res)
       }
 
       const googleUser = await userinfoRes.json();
+      if (!googleUser.email_verified) throw new Error('Google account email is not verified');
       profile = {
         name: googleUser.name || googleUser.given_name || 'Google User',
         email: googleUser.email,
         id: googleUser.sub,
       };
-    }
 
     if (!profile.email) {
       throw new Error('Google did not return a valid email address');
@@ -465,7 +369,7 @@ router.get(['/auth/google/callback', '/auth/google/callback/'], async (req, res)
       const generatedMobile = '9' + Math.floor(100000000 + Math.random() * 900000000);
       const referralCode = 'REF' + Math.random().toString(36).substr(2, 6).toUpperCase();
       const randomPass = crypto.randomBytes(16).toString('hex');
-      const passwordHash = crypto.createHash('sha256').update(randomPass + 'PLATFORM_SALT_2026').digest('hex');
+      const passwordHash = hashPassword(randomPass);
       const signupIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
 
       user = await userRepo.create({
@@ -511,25 +415,15 @@ router.get(['/auth/google/callback', '/auth/google/callback/'], async (req, res)
     const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 Hours
     activeSessions.set(token, { userId: user.id, expiresAt });
 
-    // Handle AJAX/JSON requests (for simulated inline Google selectors inside iframe)
-    if (req.query.format === 'json' || req.headers['accept']?.includes('json')) {
-      res.json({
-        token,
-        user: {
-          id: user.id,
-          mobile: user.mobile,
-          username: user.username,
-          email: user.email,
-          referralCode: user.referralCode,
-          referredByCode: user.referredByCode,
-          status: user.status,
-          createdAt: user.createdAt
-        }
-      });
-      return;
-    }
-
     // 4. Return parent postMessage bridge inside popup
+    const nonce = crypto.randomBytes(18).toString('base64');
+    const safeUserJson = JSON.stringify({
+      id: user.id, mobile: user.mobile, username: user.username, email: user.email,
+      referralCode: user.referralCode, referredByCode: user.referredByCode,
+      status: user.status, createdAt: user.createdAt
+    }).replace(/</g, '\\u003c');
+    const targetOrigin = JSON.stringify(appUrl);
+    res.setHeader('Content-Security-Policy', `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; base-uri 'none'; frame-ancestors 'none'`);
     res.send(`
       <html>
         <head><title>Authentication Successful</title></head>
@@ -541,22 +435,13 @@ router.get(['/auth/google/callback', '/auth/google/callback/'], async (req, res)
             <div style="font-size: 11px; color: #f43f5e; font-weight: bold; background: rgba(244,63,94,0.1); padding: 6px 12px; border-radius: 20px; display: inline-block;">
               Connecting...
             </div>
-            <script>
+            <script nonce="${nonce}">
               if (window.opener) {
                 window.opener.postMessage({
                   type: 'OAUTH_AUTH_SUCCESS',
                   token: '${token}',
-                  user: ${JSON.stringify({
-                    id: user.id,
-                    mobile: user.mobile,
-                    username: user.username,
-                    email: user.email,
-                    referralCode: user.referralCode,
-                    referredByCode: user.referredByCode,
-                    status: user.status,
-                    createdAt: user.createdAt
-                  })}
-                }, '*');
+                  user: ${safeUserJson}
+                }, ${targetOrigin});
                 setTimeout(() => {
                   window.close();
                 }, 800);
@@ -595,7 +480,8 @@ router.post('/auth/logout', async (req, res) => {
 
 // Get logged-in user profile
 router.get('/user/profile', authenticateToken, async (req: AuthenticatedRequest, res) => {
-  res.json({ user: req.user });
+  const { passwordHash, twoFactorSecret, ...safeUser } = req.user;
+  res.json({ user: safeUser });
 });
 
 // Apply welcome referral code (within 24 hours of account creation)
@@ -1483,6 +1369,10 @@ router.get('/payments/order/:orderId', authenticateToken, async (req: Authentica
 
 // Simulate Payment Gateway Webhook Callback Success (convenient for testing and sandbox validation)
 router.post('/payments/simulate-success', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
   const { orderId } = req.body;
   if (!orderId) {
     res.status(400).json({ error: 'Order ID is required' });
@@ -2543,6 +2433,44 @@ router.get('/admin/stats', authenticateToken, requireAdmin, async (req: Authenti
 });
 
 // Fetch all payment gateway orders for admin
+const ADMIN_ROLE_PERMISSIONS: Record<string, string[]> = {
+  operations: ['users', 'finance', 'games', 'support'],
+  finance: ['finance', 'users'],
+  support: ['support', 'users'],
+  games: ['games'],
+  viewer: ['read']
+};
+
+router.get('/admin/sub-admins', authenticateToken, requireMasterAdmin, async (_req, res) => {
+  const admins = await userRepo.getAdmins();
+  res.json({ admins: admins.map(({ passwordHash, twoFactorSecret, ...admin }) => admin) });
+});
+
+router.post('/admin/sub-admins', authenticateToken, requireMasterAdmin, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { username, email, password, role } = req.body;
+    if (!username || !email || !password || !ADMIN_ROLE_PERMISSIONS[role] || role === 'master') {
+      res.status(400).json({ error: 'Valid username, email, password and sub-admin role are required' });
+      return;
+    }
+    if (password.length < 12) {
+      res.status(400).json({ error: 'Sub-admin password must contain at least 12 characters' });
+      return;
+    }
+    if (await userRepo.findByUsername(username) || await userRepo.findByEmail(email)) {
+      res.status(409).json({ error: 'Username or email is already registered' });
+      return;
+    }
+    const passwordHash = hashPassword(password);
+    const admin = await userRepo.createAdmin({ username, email, passwordHash, role, permissions: ADMIN_ROLE_PERMISSIONS[role] });
+    logAudit(`Master admin created ${role} sub-admin ${username}`, req.user.id);
+    const { passwordHash: _, ...safeAdmin } = admin;
+    res.status(201).json({ admin: safeAdmin });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.get('/admin/gateway-orders', authenticateToken, requireAdmin, async (req: AuthenticatedRequest, res) => {
   try {
     const orders = db.gatewayOrders || [];

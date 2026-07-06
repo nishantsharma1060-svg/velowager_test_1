@@ -49,7 +49,7 @@ import { LuckyWheelComponent } from './components/LuckyWheelComponent.tsx';
 import JazPayCheckout from './components/JazPayCheckout.tsx';
 import { CustodyDashboard } from './components/CustodyDashboard.tsx';
 
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, type Variants } from 'motion/react';
 
 // Color themes based on drawn numbers
 const CRYPTO_RATES: Record<'USDT' | 'BTC' | 'ETH' | 'TRX', number> = {
@@ -144,7 +144,7 @@ export const getVipLevel = (wager: number) => {
 // SKELETON LOADING COMPONENTS FOR TABLE/LISTS
 // ==========================================
 
-const containerVariants = {
+const containerVariants: Variants = {
   hidden: { opacity: 0 },
   show: {
     opacity: 1,
@@ -155,7 +155,7 @@ const containerVariants = {
   }
 };
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { opacity: 0, y: 15, scale: 0.98 },
   show: { 
     opacity: 1, 
@@ -349,7 +349,6 @@ export default function App() {
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
   const [isNotificationsDropdownOpen, setIsNotificationsDropdownOpen] = useState(false);
-  const [isMockGoogleSelectorOpen, setIsMockGoogleSelectorOpen] = useState(false);
 
   // Welcome & Coupon Offer States
   const [welcomeReferralInput, setWelcomeReferralInput] = useState('');
@@ -618,7 +617,7 @@ export default function App() {
   // Admin Tickets State
   const [adminTickets, setAdminTickets] = useState<any[]>([]);
   const [adminActiveSubTab, setAdminActiveSubTab] = useState<'overview' | 'users' | 'financial' | 'games' | 'tickets' | 'settings' | 'coupons' | 'custody' | 'security'>('overview');
-  const [adminFinancialSubTab, setAdminFinancialSubTab] = useState<'queues' | 'payouts' | 'gateway'>('queues');
+  const [adminFinancialSubTab, setAdminFinancialSubTab] = useState<'queues' | 'payouts' | 'vault_transfer' | 'gateway'>('queues');
   const [agentPayoutsList, setAgentPayoutsList] = useState<any[]>([]);
   const [recentPayoutsList, setRecentPayoutsList] = useState<any[]>([]);
   const [autoSettleCommissions, setAutoSettleCommissions] = useState<boolean>(true);
@@ -629,6 +628,9 @@ export default function App() {
   const [replyTicketId, setReplyTicketId] = useState<string | null>(null);
   const [adminReplyText, setAdminReplyText] = useState('');
   const [adminReplyStatus, setAdminReplyStatus] = useState<'open' | 'resolved'>('resolved');
+  const [subAdmins, setSubAdmins] = useState<any[]>([]);
+  const [subAdminForm, setSubAdminForm] = useState({ username: '', email: '', password: '', role: 'operations' });
+  const [subAdminMessage, setSubAdminMessage] = useState<string | null>(null);
 
   // Vault Transfer States
   const [adminVaultTransfers, setAdminVaultTransfers] = useState<any[]>([]);
@@ -1562,13 +1564,6 @@ export default function App() {
         throw new Error(data.error || 'Failed to retrieve Google Sign-In URL');
       }
 
-      if (data.isMock) {
-        // Open the beautiful simulated modal directly in the React view!
-        setIsMockGoogleSelectorOpen(true);
-        setGoogleLoading(false);
-        return;
-      }
-
       // Open popup perfectly centered on the screen (Real OAuth)
       const width = 500;
       const height = 650;
@@ -1586,7 +1581,7 @@ export default function App() {
 
       // Secure cross-window communication listener
       const handleMessage = (event: MessageEvent) => {
-        if (event.data && event.data.type === 'OAUTH_AUTH_SUCCESS') {
+        if (event.origin === window.location.origin && event.source === popup && event.data && event.data.type === 'OAUTH_AUTH_SUCCESS') {
           const { token: googleToken, user: googleUser } = event.data;
           localStorage.setItem('token', googleToken);
           setToken(googleToken);
@@ -1611,31 +1606,6 @@ export default function App() {
     } catch (err: any) {
       console.error('Google Auth Error:', err);
       setAuthError(err.message || 'Google SSO failed.');
-      setGoogleLoading(false);
-    }
-  };
-
-  // Handler for selecting a Mock Google account in the inline modal
-  const handleSelectMockGoogleAccount = async (index: number) => {
-    setIsMockGoogleSelectorOpen(false);
-    setGoogleLoading(true);
-    setAuthError(null);
-    setAuthSuccess(null);
-    try {
-      const response = await fetch(`/api/auth/google/callback?code=mock_code_${index}&format=json`);
-      const data = await response.json();
-      if (!response.ok || data.error) {
-        throw new Error(data.error || 'Failed to authenticate via simulator account.');
-      }
-
-      localStorage.setItem('token', data.token);
-      setToken(data.token);
-      setUser(data.user);
-      setAuthSuccess(`Welcome, ${data.user.username}! Signed in with Google Mock account successfully.`);
-    } catch (err: any) {
-      console.error('Mock Google selection error:', err);
-      setAuthError(err.message || 'Failed to sign in via simulator account.');
-    } finally {
       setGoogleLoading(false);
     }
   };
@@ -1832,6 +1802,28 @@ export default function App() {
     } finally {
       setTfLoading(false);
     }
+  };
+
+  const loadSubAdmins = async () => {
+    if (user?.adminRole !== 'master') return;
+    const r = await fetch('/api/admin/sub-admins', { headers: { Authorization: `Bearer ${token}` } });
+    const d = await r.json();
+    if (r.ok) setSubAdmins(d.admins || []);
+  };
+
+  const handleCreateSubAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubAdminMessage(null);
+    const r = await fetch('/api/admin/sub-admins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(subAdminForm)
+    });
+    const d = await r.json();
+    if (!r.ok) return setSubAdminMessage(d.error || 'Unable to create sub-admin');
+    setSubAdminMessage('Sub-admin created. Ask them to enable Google Authenticator after signing in.');
+    setSubAdminForm({ username: '', email: '', password: '', role: 'operations' });
+    loadSubAdmins();
   };
 
   // Place bet on active game round
@@ -3157,18 +3149,6 @@ export default function App() {
                 <span>{googleLoading ? 'Connecting Google Account...' : authMode === 'login' ? 'Sign In with Google' : 'Sign Up with Google'}</span>
               </button>
 
-              <div className="text-center mt-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    playClickSound();
-                    setIsMockGoogleSelectorOpen(true);
-                  }}
-                  className="text-[10px] text-zinc-500 hover:text-rose-400 transition underline font-semibold"
-                >
-                  Having trouble with real Google SSO? Use Simulator Sign-In
-                </button>
-              </div>
             </form>
           </div>
         ) : (
@@ -7059,6 +7039,26 @@ export default function App() {
 
                   {/* GOOGLE AUTHENTICATOR 2FA SUB-TAB */}
                   {adminActiveSubTab === 'security' && (
+                    <>
+                    {user?.adminRole === 'master' && (
+                      <div className="bg-[#12161b] border border-zinc-800 rounded-2xl p-6 shadow-xl mb-6">
+                        <div className="flex items-center justify-between mb-5">
+                          <div><h3 className="text-sm font-black uppercase text-zinc-200">Sub-admin Management</h3><p className="text-[10px] text-zinc-500 mt-1">Create role-limited administrative accounts</p></div>
+                          <button onClick={loadSubAdmins} className="text-xs text-purple-400">Refresh list</button>
+                        </div>
+                        <form onSubmit={handleCreateSubAdmin} className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                          <input value={subAdminForm.username} onChange={e => setSubAdminForm({...subAdminForm, username:e.target.value})} placeholder="Username" className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-xs" required />
+                          <input type="email" value={subAdminForm.email} onChange={e => setSubAdminForm({...subAdminForm, email:e.target.value})} placeholder="Email" className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-xs" required />
+                          <input type="password" minLength={12} value={subAdminForm.password} onChange={e => setSubAdminForm({...subAdminForm, password:e.target.value})} placeholder="Password (12+ chars)" className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-xs" required />
+                          <select value={subAdminForm.role} onChange={e => setSubAdminForm({...subAdminForm, role:e.target.value})} className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-xs">
+                            <option value="operations">Operations</option><option value="finance">Finance</option><option value="support">Support</option><option value="games">Game Manager</option><option value="viewer">Read only</option>
+                          </select>
+                          <button className="bg-purple-600 hover:bg-purple-500 rounded-lg p-3 text-xs font-bold">Create sub-admin</button>
+                        </form>
+                        {subAdminMessage && <p className="text-xs text-amber-300 mt-3">{subAdminMessage}</p>}
+                        {subAdmins.length > 0 && <div className="mt-4 space-y-2">{subAdmins.map(a => <div key={a.id} className="flex justify-between bg-zinc-950 rounded-lg p-3 text-xs"><span>{a.username} · {a.email}</span><span className="uppercase text-purple-400">{a.adminRole} {a.twoFactorEnabled ? '· 2FA ON' : '· 2FA OFF'}</span></div>)}</div>}
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fadeIn">
                       
                       {/* Left Box: Setup/Activation */}
@@ -7245,6 +7245,7 @@ export default function App() {
                         </div>
                       </div>
                     </div>
+                    </>
                   )}
 
                 </div>
@@ -9171,75 +9172,6 @@ export default function App() {
         </AnimatePresence>
       </div>
 
-      {/* Premium Simulated Google Accounts Chooser Modal */}
-      {isMockGoogleSelectorOpen && (
-        <div className="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
-          <div className="bg-[#0f1319] border border-zinc-850 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            {/* Modal Header */}
-            <div className="p-6 text-center border-b border-zinc-900">
-              {/* Google G logo stylized with CSS */}
-              <div className="inline-flex items-center justify-center gap-1.5 mb-3">
-                <span className="text-xl font-black tracking-tight text-white flex items-center">
-                  <span className="text-blue-500 font-extrabold">G</span>
-                  <span className="text-red-500 font-extrabold">o</span>
-                  <span className="text-yellow-500 font-extrabold">o</span>
-                  <span className="text-blue-500 font-extrabold">g</span>
-                  <span className="text-green-500 font-extrabold">l</span>
-                  <span className="text-red-500 font-extrabold">e</span>
-                </span>
-                <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 font-bold uppercase">
-                  SIMULATOR
-                </span>
-              </div>
-              <h3 className="text-lg font-black text-white tracking-tight">Choose an account</h3>
-              <p className="text-xs text-zinc-400 mt-1 font-sans">to continue to VeloWager color trading</p>
-            </div>
-
-            {/* Account List */}
-            <div className="p-4 space-y-2 max-h-[300px] overflow-y-auto">
-              {[
-                { name: 'Alex Carter', email: 'alex.carter@gmail.com', avatar: 'AC' },
-                { name: 'Sarah Jenkins', email: 'sarah.j@gmail.com', avatar: 'SJ' },
-                { name: 'Devon Miller', email: 'devon.m@gmail.com', avatar: 'DM' },
-              ].map((acc, index) => (
-                <button
-                  key={index}
-                  onClick={() => {
-                    playClickSound();
-                    handleSelectMockGoogleAccount(index);
-                  }}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-zinc-900/60 active:bg-zinc-900 transition text-left border border-transparent hover:border-zinc-850"
-                >
-                  <div className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center font-bold text-xs text-zinc-300">
-                    {acc.avatar}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold text-white truncate">{acc.name}</div>
-                    <div className="text-xs text-zinc-400 truncate font-mono">{acc.email}</div>
-                  </div>
-                  <div className="text-zinc-600 text-[10px] font-bold uppercase shrink-0 font-mono">
-                    Click to sign in
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 bg-zinc-950/50 border-t border-zinc-900 flex justify-between items-center text-[10px] text-zinc-500">
-              <span>Secure sandboxed preview flow</span>
-              <button
-                onClick={() => {
-                  playClickSound();
-                  setIsMockGoogleSelectorOpen(false);
-                }}
-                className="text-rose-400 hover:text-rose-300 font-bold uppercase tracking-wider text-[11px]"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

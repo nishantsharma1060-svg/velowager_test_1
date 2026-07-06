@@ -10,7 +10,8 @@ export interface GeneratedAddressInfo {
 
 export class HDWalletService {
   private static getMasterMnemonic(): string {
-    return process.env.CRYPTO_MASTER_MNEMONIC || 'scout custom build design basic stable robust element trust direct correct dynamic';
+    if (!process.env.CRYPTO_MASTER_MNEMONIC) throw new Error('CRYPTO_MASTER_MNEMONIC is required');
+    return process.env.CRYPTO_MASTER_MNEMONIC;
   }
 
   /**
