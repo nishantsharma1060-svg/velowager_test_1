@@ -25,6 +25,19 @@ export async function seedIfNeeded() {
         ,googleOAuthEnabled: true
       }).onConflictDoNothing();
 
+      // Update only legacy default announcements; preserve administrator-created text.
+      const existingSettings = await db.select().from(platformSettings).where(eq(platformSettings.id, 1));
+      if (existingSettings[0]) {
+        const replacements: Record<string, string> = {
+          'Welcome to our Modular Gaming Platform! Enjoy WinGo Color Trading with multiple modes.': 'Welcome to our VeloWager Platform! Enjoy WinGo Color Trading with multiple modes.',
+          'Refer friends using your referral code and earn 5% of their total bets instantly in your wallet!': 'Refer friends and earn 10% whenever they make an approved deposit of Rs.500 or more!'
+        };
+        const announcements = existingSettings[0].announcements.map(item => replacements[item] || item);
+        if (announcements.some((item, index) => item !== existingSettings[0].announcements[index])) {
+          await db.update(platformSettings).set({ announcements }).where(eq(platformSettings.id, 1));
+        }
+      }
+
       // 2. Seed Games
       await db.insert(games).values([
         {

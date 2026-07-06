@@ -2474,8 +2474,9 @@ router.get('/admin/users', authenticateToken, requireAdmin, async (req: Authenti
   // Map with wallet info
   const usersWithWallet = await Promise.all(users.map(async (u) => {
     const wallet = await walletService.getBalance(u.id);
+    const { passwordHash, twoFactorSecret, ...safeUser } = u;
     return {
-      ...u,
+      ...safeUser,
       wallet
     };
   }));
@@ -2497,8 +2498,9 @@ router.get('/admin/users/:userId/details', authenticateToken, requireAdmin, asyn
     const transactionsList = await walletRepo.getTransactionsByUserId(userId);
     const betsList = await gameRepo.getBetsByUserId(userId, 100);
 
+    const { passwordHash, twoFactorSecret, ...safeUser } = user;
     res.json({
-      user,
+      user: safeUser,
       wallet,
       transactions: transactionsList,
       bets: betsList
@@ -2523,11 +2525,33 @@ router.post('/admin/users/:userId/status', authenticateToken, requireAdmin, asyn
       return;
     }
 
+    if (status !== 'active') {
+      for (const [token, session] of activeSessions.entries()) {
+        if (session.userId === updated.id) activeSessions.delete(token);
+      }
+    }
     logAudit(`Updated user status of ${updated.mobile} to ${status}`, req.user.id);
     res.json({ message: `User status successfully set to ${status}`, user: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+router.post('/admin/users/:userId/revoke-sessions', authenticateToken, requireMasterAdmin, async (req: AuthenticatedRequest, res) => {
+  const target = await userRepo.findById(req.params.userId);
+  if (!target) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+  let revoked = 0;
+  for (const [token, session] of activeSessions.entries()) {
+    if (session.userId === target.id) {
+      activeSessions.delete(token);
+      revoked++;
+    }
+  }
+  logAudit(`Master admin revoked ${revoked} active session(s) for ${target.username || target.mobile}`, req.user.id);
+  res.json({ message: `Revoked ${revoked} active session(s)` });
 });
 
 // Update user agent designation status (Decide who is an agent)

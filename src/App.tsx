@@ -584,6 +584,7 @@ export default function App() {
   const [adminAuditLogs, setAdminAuditLogs] = useState<any[]>([]);
   const [adminGatewayOrders, setAdminGatewayOrders] = useState<any[]>([]);
   const [adminSearchUser, setAdminSearchUser] = useState('');
+  const [adminUserStatusFilter, setAdminUserStatusFilter] = useState<'all' | 'active' | 'frozen' | 'banned'>('all');
   const [adminFilterTx, setAdminFilterTx] = useState<'all' | 'deposit' | 'withdraw'>('all');
   
   // Admin Action Modals / Input Values
@@ -2263,6 +2264,26 @@ export default function App() {
     }
   };
 
+  const filteredAdminUsers = adminUsers.filter((u) => {
+    const query = adminSearchUser.trim().toLowerCase();
+    const matchesQuery = !query || [u.id, u.username, u.email, u.mobile].some(value => String(value || '').toLowerCase().includes(query));
+    return matchesQuery && (adminUserStatusFilter === 'all' || u.status === adminUserStatusFilter);
+  });
+
+  const exportAdminUsersCsv = () => {
+    const escape = (value: any) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const rows = [['ID', 'Username', 'Email', 'Mobile', 'Status', 'Type', 'Balance'], ...filteredAdminUsers.map(u => [u.id, u.username, u.email, u.mobile, u.status, u.isAgent ? 'Agent' : 'Player', ((u.wallet?.balance ?? 0) + (u.wallet?.promoBalance ?? 0)).toFixed(2)])];
+    const blob = new Blob([rows.map(row => row.map(escape).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a'); link.href = url; link.download = `velowager-users-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
+  };
+
+  const revokeUserSessions = async (userId: string) => {
+    const r = await fetch(`/api/admin/users/${userId}/revoke-sessions`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    const d = await r.json();
+    alert(d.error || d.message);
+  };
+
   // Toggle agent status of a user
   const handleAdminUserAgent = async (userId: string, isAgent: boolean) => {
     try {
@@ -2890,7 +2911,7 @@ export default function App() {
                   <div className="hidden sm:block text-left text-xs leading-none">
                     <span className="font-extrabold text-zinc-300 block">Profile</span>
                     <span className="text-[9px] text-zinc-500 font-mono block mt-0.5">
-                      {user?.mobile ? `${user.mobile.slice(0, 4)}...${user.mobile.slice(-4)}` : 'Guest'}
+                      {user?.username || 'Guest'}
                     </span>
                   </div>
                 </button>
@@ -5081,15 +5102,21 @@ export default function App() {
                         
                         {/* USER ACCOUNTS CONFIG ADAPTATION PANEL */}
                     <div className="lg:col-span-2 bg-[#12161b] border border-zinc-800 rounded-2xl p-6 shadow-xl flex flex-col">
-                      <div className="flex justify-between items-center mb-4">
+                      <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
                         <h3 className="text-sm font-black uppercase text-zinc-300 tracking-wider">User Platform Access Controls</h3>
+                        <div className="flex flex-wrap gap-2">
                         <input 
                           type="text" 
-                          placeholder="Search Mobile..." 
+                          placeholder="Search name, email, mobile or ID..."
                           value={adminSearchUser}
                           onChange={(e) => setAdminSearchUser(e.target.value)}
                           className="bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1 text-xs text-white placeholder-zinc-600 focus:outline-none"
                         />
+                        <select value={adminUserStatusFilter} onChange={e => setAdminUserStatusFilter(e.target.value as any)} className="bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1 text-xs text-white">
+                          <option value="all">All statuses</option><option value="active">Active</option><option value="frozen">Frozen</option><option value="banned">Banned</option>
+                        </select>
+                        <button onClick={exportAdminUsersCsv} className="bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 rounded px-2.5 py-1 text-xs font-bold">Export CSV</button>
+                        </div>
                       </div>
 
                       <div className="overflow-x-auto flex-grow max-h-[300px] overflow-y-auto">
@@ -5097,7 +5124,7 @@ export default function App() {
                           <thead>
                             <tr className="border-b border-zinc-800 text-zinc-500 uppercase tracking-wider">
                               <th className="pb-2">User ID</th>
-                              <th className="pb-2">Mobile</th>
+                              <th className="pb-2">User</th>
                               <th className="pb-2">Type</th>
                               <th className="pb-2">Wallet Bal</th>
                               <th className="pb-2">Wagering Status</th>
@@ -5107,8 +5134,7 @@ export default function App() {
                             </tr>
                           </thead>
                           <tbody>
-                            {adminUsers
-                              .filter(u => u.mobile.includes(adminSearchUser))
+                            {filteredAdminUsers
                               .map((u) => (
                                 <tr key={u.id} className="border-b border-zinc-850 hover:bg-zinc-900/40">
                                   <td className="py-2.5 font-mono font-bold text-zinc-300">{u.id}</td>
@@ -5118,7 +5144,8 @@ export default function App() {
                                       className="text-rose-400 hover:text-rose-300 hover:underline cursor-pointer font-bold focus:outline-none text-left"
                                       title="Click to inspect bank, transaction, and game play history"
                                     >
-                                      {u.mobile}
+                                      <span className="block">{u.username || u.mobile}</span>
+                                      <span className="block text-[9px] text-zinc-500">{u.email || u.mobile}</span>
                                     </button>
                                   </td>
                                   <td className="py-2.5">
@@ -5193,6 +5220,7 @@ export default function App() {
                                         Activate
                                       </button>
                                     )}
+                                    {user?.adminRole === 'master' && <button onClick={() => revokeUserSessions(u.id)} className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 font-bold px-2 py-0.5 rounded text-[10px] transition">Logout</button>}
                                   </td>
                                 </tr>
                               ))}
@@ -7633,7 +7661,8 @@ export default function App() {
                     </div>
 
                     <div className="grow text-center sm:text-left">
-                      <h3 className="text-lg font-black text-white tracking-tight">{user?.mobile}</h3>
+                      <h3 className="text-lg font-black text-white tracking-tight">{user?.username || 'VeloWager User'}</h3>
+                      {user?.email && <p className="text-xs text-zinc-500 mt-1">{user.email}</p>}
                       <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-1.5 text-xs text-zinc-400">
                         <span className="font-mono bg-zinc-800/85 border border-zinc-750 px-2 py-0.5 rounded text-[10px]">
                           ID: {user?.id}
