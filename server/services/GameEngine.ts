@@ -69,9 +69,11 @@ export class GameEngine {
   private async tick() {
     try {
       const now = new Date();
-      const hours = now.getHours();
-      const minutes = now.getMinutes();
-      const seconds = now.getSeconds();
+      // Period IDs must be independent of the host machine's timezone.
+      // The date portion below is UTC, so calculate the daily sequence in UTC too.
+      const hours = now.getUTCHours();
+      const minutes = now.getUTCMinutes();
+      const seconds = now.getUTCSeconds();
       const totalSecondsToday = hours * 3600 + minutes * 60 + seconds;
 
       const modesConfig = [
@@ -147,7 +149,11 @@ export class GameEngine {
               state.status = 'closed';
               
               // Persist closed status in database
-              const dbRound = await this.gameRepo.getActiveRound(gameId, config.mode);
+              // Close this exact live round. Looking up any active round can select
+              // a stale period created by an instance running in another timezone.
+              const dbRound = state.id
+                ? await this.gameRepo.findRoundById(state.id)
+                : await this.gameRepo.findRoundByPeriod(gameId, config.mode, state.periodNumber);
               if (dbRound && dbRound.status === 'betting') {
                 await this.gameRepo.updateRound(dbRound.id, {
                   status: 'closed',

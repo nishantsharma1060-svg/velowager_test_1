@@ -197,14 +197,18 @@ export class GameRepository {
     if (fileDb.isOffline) {
       return fileDb.rounds
         .filter(r => r.gameId === gameId && r.gameMode === gameMode && r.status === 'settled')
-        .sort((a, b) => b.periodNumber.localeCompare(a.periodNumber))
+        .sort((a, b) => {
+          const bTime = new Date(b.settledAt || b.createdAt).getTime();
+          const aTime = new Date(a.settledAt || a.createdAt).getTime();
+          return bTime - aTime;
+        })
         .slice(0, limit);
     }
 
     try {
       const result = await pgDb.select().from(gameRounds)
         .where(and(eq(gameRounds.gameId, gameId), eq(gameRounds.gameMode, gameMode), eq(gameRounds.status, 'settled')))
-        .orderBy(desc(gameRounds.periodNumber))
+        .orderBy(desc(gameRounds.settledAt), desc(gameRounds.createdAt))
         .limit(limit);
       return result.map(r => ({
         ...r,
