@@ -13,6 +13,10 @@ import { gameEngine } from './server/services/GameEngine.js';
 import apiRouter from './server/api.js';
 
 async function startServer() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required. Add it to the Render service environment variables.');
+  }
+
   // Initialize and seed PostgreSQL database
   await seedIfNeeded();
   await db.init();
@@ -25,6 +29,11 @@ async function startServer() {
   // JSON and URL-encoded body parsing middlewares
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+
+  // Render uses this endpoint to verify that the web process is accepting traffic.
+  app.get('/health', (_req, res) => {
+    res.status(200).json({ status: 'ok' });
+  });
 
   // Register all modular REST API controller endpoints
   app.use('/api', apiRouter);
@@ -43,7 +52,8 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     // Serve static compiled assets from dist/
-    const distPath = path.resolve(__dirname, 'dist');
+    // server.cjs is emitted into dist/, alongside index.html and assets/.
+    const distPath = path.resolve(process.cwd(), 'dist');
     app.use(express.static(distPath));
 
     // Support single-page routing fallback
@@ -52,7 +62,9 @@ async function startServer() {
     });
   }
 
-  app.listen(port, '0.0.0.0');
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`Server listening on 0.0.0.0:${port}`);
+  });
 }
 
 startServer().catch((err) => {
