@@ -197,7 +197,7 @@ export class ColorTradingGame implements IGame {
       if (betUser && betUser.referredByCode) {
         const referrer = db.users.find(u => u.referralCode === betUser.referredByCode);
         if (referrer) {
-          const commissionPercent = settings.referralCommissionPercent || 5;
+          const commissionPercent = 0; // Bet commissions replaced by qualifying deposit bonuses.
           const commAmount = Number(((bet.amount * commissionPercent) / 100).toFixed(2));
           
           if (commAmount > 0) {

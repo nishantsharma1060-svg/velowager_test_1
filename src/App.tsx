@@ -4696,7 +4696,7 @@ export default function App() {
                         <span className="bg-rose-500/10 border border-rose-500/20 text-rose-400 font-extrabold uppercase text-[10px] tracking-widest px-2.5 py-1 rounded-full">
                           Affiliate Commission Program
                         </span>
-                        <h2 className="text-xl sm:text-2xl font-black text-white mt-3 leading-tight">Refer Friends & Earn {platformConfig?.referralCommissionPercent || 5}% Commission!</h2>
+                        <h2 className="text-xl sm:text-2xl font-black text-white mt-3 leading-tight">Refer Friends & Earn 10% on Deposits of Rs.500+!</h2>
                         <p className="text-xs text-zinc-400 mt-2">Get direct earnings into your cash wallet immediately when friends register using your referral code and play contract bets on WinGo.</p>
                       </div>
 
@@ -6316,11 +6316,11 @@ export default function App() {
                       </div>
 
                       <div>
-                        <label className="block text-[10px] uppercase font-black text-zinc-500 mb-1">Referral Commission (%)</label>
+                        <label className="block text-[10px] uppercase font-black text-zinc-500 mb-1">Referral Deposit Bonus (%)</label>
                         <input 
                           type="number" 
-                          defaultValue={adminSettings?.referralCommissionPercent}
-                          onBlur={(e) => handleAdminSettingsSubmit({ referralCommissionPercent: Number(e.target.value) })}
+                          value={10}
+                          disabled
                           className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2 px-3 text-xs text-white focus:outline-none font-mono"
                         />
                       </div>

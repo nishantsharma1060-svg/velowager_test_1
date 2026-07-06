@@ -11,7 +11,7 @@ export async function seedIfNeeded() {
       await db.insert(platformSettings).values({
         id: 1,
         signupBonus: 100,
-        referralCommissionPercent: 5,
+        referralCommissionPercent: 10,
         winningFeePercent: 2,
         minDeposit: 100,
         minWithdraw: 200,
@@ -19,7 +19,7 @@ export async function seedIfNeeded() {
         maintenanceMessage: 'Platform is undergoing routine maintenance. We will be back shortly.',
         announcements: [
           'Welcome to our Modular Gaming Platform! Enjoy WinGo Color Trading with multiple modes.',
-          'Refer friends using your referral code and earn 5% of their total bets instantly in your wallet!'
+          'Refer friends and earn 10% whenever they make an approved deposit of Rs.500 or more!'
         ],
         wageringMultiplier: 1
         ,googleOAuthEnabled: true

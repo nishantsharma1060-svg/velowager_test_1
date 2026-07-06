@@ -2,10 +2,12 @@ import { IWalletService } from '../interfaces/IWalletService.js';
 import { WalletRepository } from '../repositories/WalletRepository.js';
 import { UserRepository } from '../repositories/UserRepository.js';
 import { Wallet, Transaction, db } from '../db.js';
+import { ReferralRepository } from '../repositories/ReferralRepository.js';
 
 export class WalletService implements IWalletService {
   private walletRepo = new WalletRepository();
   private userRepo = new UserRepository();
+  private referralRepo = new ReferralRepository();
 
   async getBalance(userId: string): Promise<Wallet> {
     let wallet = await this.walletRepo.findByUserId(userId);
@@ -273,6 +275,32 @@ export class WalletService implements IWalletService {
       'approved',
       'Deposit approved and credited by Admin'
     );
+
+    // Pay a one-time 10% bonus when a referred user's approved deposit is Rs.500+.
+    if (tx.amount >= 500 && !(await this.referralRepo.hasDepositCommission(tx.id))) {
+      const referee = await this.userRepo.findById(tx.userId);
+      if (referee?.referredByCode) {
+        const referrer = await this.userRepo.findByReferralCode(referee.referredByCode);
+        if (referrer) {
+          const bonus = Number((tx.amount * 0.10).toFixed(2));
+          await this.adminCreditDebit(referrer.id, bonus, 'credit', `10% referral deposit bonus for deposit ${tx.id}`);
+          await this.referralRepo.addCommission({ referrerId: referrer.id, refereeId: referee.id, depositTransactionId: tx.id, commissionType: 'deposit', amount: bonus });
+          await db.executeTransaction((d) => {
+            d.notifications.push({
+              id: 'notif-' + Math.random().toString(36).substr(2, 9), userId: referrer.id,
+              title: 'Referral Deposit Bonus',
+              content: `You received Rs.${bonus.toFixed(2)} (10%) from a referred user's qualifying deposit of Rs.${tx.amount.toFixed(2)}.`,
+              isRead: false, createdAt: new Date().toISOString()
+            });
+            if (!d.agentPayouts) d.agentPayouts = [];
+            d.agentPayouts.push({
+              id: 'ap-deposit-' + Math.random().toString(36).substr(2, 9), agentId: referrer.id,
+              amount: bonus, subordinateRevenue: tx.amount, type: 'automatic', createdAt: new Date().toISOString()
+            });
+          });
+        }
+      }
+    }
 
     db.executeTransaction((d) => {
       d.notifications.push({

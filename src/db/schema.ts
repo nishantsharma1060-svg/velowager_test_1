@@ -108,7 +108,9 @@ export const referralCommissions = pgTable('referral_commissions', {
   id: text('id').primaryKey(),
   referrerId: text('referrer_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   refereeId: text('referee_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  betId: text('bet_id').references(() => bets.id, { onDelete: 'cascade' }).notNull(),
+  betId: text('bet_id').references(() => bets.id, { onDelete: 'cascade' }),
+  depositTransactionId: text('deposit_transaction_id').references(() => transactions.id, { onDelete: 'cascade' }).unique(),
+  commissionType: text('commission_type').$type<'bet' | 'deposit'>().default('deposit').notNull(),
   amount: doublePrecision('amount').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });

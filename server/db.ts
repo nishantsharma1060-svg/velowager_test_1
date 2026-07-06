@@ -144,7 +144,9 @@ export interface ReferralCommission {
   id: string;
   referrerId: string;
   refereeId: string;
-  betId: string;
+  betId?: string;
+  depositTransactionId?: string;
+  commissionType?: 'bet' | 'deposit';
   amount: number;
   createdAt: string;
 }

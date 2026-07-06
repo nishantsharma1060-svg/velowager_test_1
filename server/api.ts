@@ -70,32 +70,8 @@ const activeCrashGames = new Map<string, {
 }>();
 
 async function handleReferralCommission(bet: any, betUser: any) {
-  if (betUser && betUser.referredByCode) {
-    const referrer = db.users.find(u => u.referralCode === betUser.referredByCode);
-    if (referrer) {
-      const settings = db.settings;
-      const commissionPercent = settings.referralCommissionPercent || 5;
-      const commAmount = Number(((bet.amount * commissionPercent) / 100).toFixed(2));
-      
-      if (commAmount > 0) {
-        // Credit referrer's cash balance
-        await walletService.adminCreditDebit(
-          referrer.id,
-          commAmount,
-          'credit',
-          `Referral Bet Commission from referee ${betUser.mobile.slice(0, 3)}***${betUser.mobile.slice(-3)} play in ${bet.gameId}`
-        );
-
-        // Save referral commission record
-        await referralRepo.addCommission({
-          referrerId: referrer.id,
-          refereeId: betUser.id,
-          betId: bet.id,
-          amount: commAmount
-        });
-      }
-    }
-  }
+  // Bet-based referral commissions were replaced by deposit bonuses.
+  return;
 }
 
 // helper to add audit logs
@@ -119,6 +95,8 @@ router.get('/config', (req, res) => {
   const settings = db.settings;
   res.json({
     signupBonus: settings.signupBonus,
+    referralCommissionPercent: 10,
+    referralDepositMinimum: 500,
     winningFeePercent: settings.winningFeePercent,
     minDeposit: settings.minDeposit,
     minWithdraw: settings.minWithdraw,

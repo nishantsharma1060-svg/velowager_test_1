@@ -13,6 +13,20 @@ import { db } from './server/db.js';
 import { seedIfNeeded } from './src/db/seed.ts';
 import { gameEngine } from './server/services/GameEngine.js';
 import apiRouter from './server/api.js';
+import { db as schemaDb } from './src/db/index.ts';
+import { sql } from 'drizzle-orm';
+
+async function ensureRuntimeSchema() {
+  // Existing manually-created Render services might not execute render.yaml's
+  // migration command. Keep additive compatibility changes idempotent.
+  await schemaDb.execute(sql.raw('ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_role text'));
+  await schemaDb.execute(sql.raw("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_permissions jsonb DEFAULT '[]'::jsonb NOT NULL"));
+  await schemaDb.execute(sql.raw('ALTER TABLE platform_settings ADD COLUMN IF NOT EXISTS google_oauth_enabled boolean DEFAULT true NOT NULL'));
+  await schemaDb.execute(sql.raw('ALTER TABLE referral_commissions ALTER COLUMN bet_id DROP NOT NULL'));
+  await schemaDb.execute(sql.raw('ALTER TABLE referral_commissions ADD COLUMN IF NOT EXISTS deposit_transaction_id text'));
+  await schemaDb.execute(sql.raw("ALTER TABLE referral_commissions ADD COLUMN IF NOT EXISTS commission_type text DEFAULT 'deposit' NOT NULL"));
+  await schemaDb.execute(sql.raw('CREATE UNIQUE INDEX IF NOT EXISTS referral_commissions_deposit_transaction_id_unique ON referral_commissions (deposit_transaction_id)'));
+}
 
 async function startServer() {
   if (!process.env.DATABASE_URL) {
@@ -23,6 +37,9 @@ async function startServer() {
     const missing = required.filter(key => !process.env[key]);
     if (missing.length) throw new Error(`Missing required production environment variables: ${missing.join(', ')}`);
   }
+
+  // Bring older Render databases up to the minimum schema before seeding.
+  await ensureRuntimeSchema();
 
   // Initialize and seed PostgreSQL database
   await seedIfNeeded();

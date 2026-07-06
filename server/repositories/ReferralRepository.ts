@@ -42,6 +42,8 @@ export class ReferralRepository {
       referrerId: commission.referrerId,
       refereeId: commission.refereeId,
       betId: commission.betId,
+      depositTransactionId: commission.depositTransactionId,
+      commissionType: commission.commissionType || (commission.depositTransactionId ? 'deposit' : 'bet'),
       amount: commission.amount,
       createdAt: new Date()
     };
@@ -66,6 +68,12 @@ export class ReferralRepository {
       console.error('ReferralRepository addCommission failed:', err);
       throw new Error('Database operation failed', { cause: err });
     }
+  }
+
+  async hasDepositCommission(transactionId: string): Promise<boolean> {
+    const result = await pgDb.select({ id: referralCommissions.id }).from(referralCommissions)
+      .where(eq(referralCommissions.depositTransactionId, transactionId)).limit(1);
+    return result.length > 0;
   }
 
   async getReferralsByReferrerId(referrerId: string): Promise<Referral[]> {
