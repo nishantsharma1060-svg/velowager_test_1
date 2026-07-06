@@ -86,6 +86,12 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
       setGameActive(false);
       setCrashed(true);
       setCrashPoint(crashPointRef.current);
+      requestRef.current = null;
+      // Finalize the lost session server-side so the next launch is not blocked.
+      void fetch('/api/game/crash/resolve', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).catch(() => undefined);
       triggerCrashSound();
       setFeedback({
         type: 'error',

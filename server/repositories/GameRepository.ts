@@ -117,6 +117,24 @@ export class GameRepository {
     }
   }
 
+  async getStaleUnsettledRounds(gameId: string, gameMode: string, currentPeriod: string): Promise<GameRound[]> {
+    const result = await pgDb.select().from(gameRounds)
+      .where(and(
+        eq(gameRounds.gameId, gameId),
+        eq(gameRounds.gameMode, gameMode),
+        ne(gameRounds.status, 'settled'),
+        ne(gameRounds.periodNumber, currentPeriod)
+      ))
+      .orderBy(desc(gameRounds.createdAt))
+      .limit(20);
+    return result.map(r => ({
+      ...r,
+      createdAt: r.createdAt.toISOString(),
+      closedAt: r.closedAt?.toISOString() || undefined,
+      settledAt: r.settledAt?.toISOString() || undefined,
+    })) as GameRound[];
+  }
+
   async findRoundById(id: string): Promise<GameRound | null> {
     if (fileDb.isOffline) {
       const r = fileDb.rounds.find(x => x.id === id);

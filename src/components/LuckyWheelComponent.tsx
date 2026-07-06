@@ -277,7 +277,8 @@ export const LuckyWheelComponent: React.FC<LuckyWheelComponentProps> = ({ token,
             <div className="absolute inset-0 rounded-full border-2 border-zinc-800 pointer-events-none z-10"></div>
             
             <motion.div
-              style={{ rotate: rotation }}
+              animate={{ rotate: rotation }}
+              initial={false}
               transition={{ duration: 5, ease: [0.1, 0.8, 0.1, 1] }}
               className="w-full h-full rounded-full relative overflow-hidden"
             >

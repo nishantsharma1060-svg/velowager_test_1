@@ -69,6 +69,25 @@ const activeCrashGames = new Map<string, {
   betId: string;
 }>();
 
+async function settleExpiredCrashSession(userId: string): Promise<boolean> {
+  const active = activeCrashGames.get(userId);
+  if (!active || !active.isActive) return false;
+  const multiplier = Math.exp(0.065 * ((Date.now() - active.startTime) / 1000));
+  if (multiplier < active.crashPoint) return false;
+
+  // Delete first so duplicate browser requests cannot settle the same game twice.
+  active.isActive = false;
+  activeCrashGames.delete(userId);
+  await gameRepo.updateBetSettlement(active.betId, 'lost', 0, 0);
+  await gameRepo.updateRound(active.roundId, {
+    totalBetAmount: active.betAmount,
+    totalWinAmount: 0,
+    status: 'settled',
+    settledAt: new Date().toISOString()
+  });
+  return true;
+}
+
 async function handleReferralCommission(bet: any, betUser: any) {
   // Bet-based referral commissions were replaced by deposit bonuses.
   return;
@@ -107,6 +126,7 @@ router.get('/config', (req, res) => {
     affiliateBannerText: settings.affiliateBannerText ?? 'Earn passive income by inviting your friends!',
     affiliateBannerImageUrl: settings.affiliateBannerImageUrl ?? '',
     googleOAuthEnabled: (settings.googleOAuthEnabled ?? true) && !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET,
+    telegramUrl: settings.telegramUrl || '',
     paymentGateways: (settings.paymentGateways || []).map(g => ({
       id: g.id,
       name: g.name,
@@ -361,6 +381,7 @@ router.get(['/auth/google/callback', '/auth/google/callback/'], async (req, res)
       const signupIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
 
       user = await userRepo.create({
+        id: `google-${profile.id}`,
         mobile: generatedMobile,
         username: profile.name,
         email: profile.email,
@@ -2118,8 +2139,16 @@ router.post('/game/crash/start', authenticateToken, async (req: AuthenticatedReq
 
   const existing = activeCrashGames.get(req.user.id);
   if (existing && existing.isActive) {
-    res.status(400).json({ error: 'You already have an active Crash game session.' });
-    return;
+    try {
+      const recovered = await settleExpiredCrashSession(req.user.id);
+      if (!recovered) {
+        res.status(400).json({ error: 'You already have an active Crash game session.' });
+        return;
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: `Unable to recover previous Crash session: ${err.message}` });
+      return;
+    }
   }
 
   const wallet = await walletService.getBalance(req.user.id);
@@ -2266,6 +2295,17 @@ router.post('/game/crash/cashout', authenticateToken, async (req: AuthenticatedR
   }
 });
 
+// Browser notifies the server when the locally animated rocket reaches its crash point.
+// This also provides an idempotent recovery path after tab throttling or reconnects.
+router.post('/game/crash/resolve', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const settled = await settleExpiredCrashSession(req.user.id);
+    res.json({ settled });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ==========================================
 // 3. COLOR TRADING GAME ENGINE ENDPOINTS
@@ -2273,12 +2313,14 @@ router.post('/game/crash/cashout', authenticateToken, async (req: AuthenticatedR
 
 // Get countdown statuses of all WinGo time modes
 router.get('/game/color-trading/state', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   const liveStates = gameEngine.getLiveStates();
   res.json({ state: liveStates });
 });
 
 // Get result history of WinGo
 router.get('/game/color-trading/rounds', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   const mode = (req.query.mode as string) || '1m';
   const history = await gameRepo.getRoundsHistory('color-trading', mode, 50);
   res.json({ rounds: history });
@@ -2798,12 +2840,17 @@ router.post('/admin/settings', authenticateToken, requireAdmin, (req: Authentica
     highBetAlwaysLoss,
     affiliateBannerText,
     affiliateBannerImageUrl
-    ,googleOAuthEnabled
+    ,googleOAuthEnabled,
+    telegramUrl
   } = req.body;
 
   try {
     if (googleOAuthEnabled === true && (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET)) {
       res.status(400).json({ error: 'Configure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET before enabling Google OAuth' });
+      return;
+    }
+    if (telegramUrl !== undefined && telegramUrl !== '' && !/^https:\/\/(t\.me|telegram\.me)\/[A-Za-z0-9_+/-]+$/.test(String(telegramUrl))) {
+      res.status(400).json({ error: 'Telegram URL must start with https://t.me/ or https://telegram.me/' });
       return;
     }
     const updatedSettings = {
@@ -2820,6 +2867,7 @@ router.post('/admin/settings', authenticateToken, requireAdmin, (req: Authentica
       affiliateBannerText: affiliateBannerText !== undefined ? String(affiliateBannerText) : (db.settings.affiliateBannerText ?? 'Earn passive income by inviting your friends!'),
       affiliateBannerImageUrl: affiliateBannerImageUrl !== undefined ? String(affiliateBannerImageUrl) : (db.settings.affiliateBannerImageUrl ?? ''),
       googleOAuthEnabled: googleOAuthEnabled !== undefined ? Boolean(googleOAuthEnabled) : (db.settings.googleOAuthEnabled ?? true),
+      telegramUrl: telegramUrl !== undefined ? String(telegramUrl).trim() : (db.settings.telegramUrl ?? ''),
       paymentGateways: req.body.paymentGateways !== undefined ? req.body.paymentGateways : db.settings.paymentGateways
     };
 

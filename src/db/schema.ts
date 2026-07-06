@@ -143,6 +143,7 @@ export const platformSettings = pgTable('platform_settings', {
   autoSettleCommissions: boolean('auto_settle_commissions').default(true).notNull(),
   paymentGateways: jsonb('payment_gateways').$type<any[]>().default([]).notNull(),
   googleOAuthEnabled: boolean('google_oauth_enabled').default(true).notNull(),
+  telegramUrl: text('telegram_url').default('').notNull(),
 });
 
 // 11. AuditLogs Table

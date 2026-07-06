@@ -189,6 +189,7 @@ export interface PlatformSettings {
   autoSettleCommissions?: boolean;
   paymentGateways?: PaymentGateway[];
   googleOAuthEnabled?: boolean;
+  telegramUrl?: string;
 }
 
 export interface AuditLog {
@@ -265,6 +266,7 @@ class PostgresDatabase {
         affiliateBannerImageUrl: '',
         autoSettleCommissions: true,
         googleOAuthEnabled: true,
+        telegramUrl: '',
         paymentGateways: [
           {
             id: 'jazpays',
@@ -444,6 +446,7 @@ class PostgresDatabase {
           autoSettleCommissions: settingsList[0].autoSettleCommissions,
           paymentGateways: (settingsList[0] as any).paymentGateways || [],
           googleOAuthEnabled: settingsList[0].googleOAuthEnabled,
+          telegramUrl: settingsList[0].telegramUrl,
         };
       }
 
@@ -500,6 +503,7 @@ class PostgresDatabase {
           autoSettleCommissions: this.data.settings.autoSettleCommissions ?? true,
           paymentGateways: this.data.settings.paymentGateways || [],
           googleOAuthEnabled: this.data.settings.googleOAuthEnabled ?? true,
+          telegramUrl: this.data.settings.telegramUrl ?? '',
         }).where(eq(pgPlatformSettings.id, 1));
       }
 

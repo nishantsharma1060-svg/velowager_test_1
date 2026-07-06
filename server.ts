@@ -22,6 +22,7 @@ async function ensureRuntimeSchema() {
   await schemaDb.execute(sql.raw('ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_role text'));
   await schemaDb.execute(sql.raw("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_permissions jsonb DEFAULT '[]'::jsonb NOT NULL"));
   await schemaDb.execute(sql.raw('ALTER TABLE platform_settings ADD COLUMN IF NOT EXISTS google_oauth_enabled boolean DEFAULT true NOT NULL'));
+  await schemaDb.execute(sql.raw("ALTER TABLE platform_settings ADD COLUMN IF NOT EXISTS telegram_url text DEFAULT '' NOT NULL"));
   await schemaDb.execute(sql.raw('ALTER TABLE referral_commissions ALTER COLUMN bet_id DROP NOT NULL'));
   await schemaDb.execute(sql.raw('ALTER TABLE referral_commissions ADD COLUMN IF NOT EXISTS deposit_transaction_id text'));
   await schemaDb.execute(sql.raw("ALTER TABLE referral_commissions ADD COLUMN IF NOT EXISTS commission_type text DEFAULT 'deposit' NOT NULL"));

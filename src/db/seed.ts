@@ -22,7 +22,8 @@ export async function seedIfNeeded() {
           'Refer friends and earn 10% whenever they make an approved deposit of Rs.500 or more!'
         ],
         wageringMultiplier: 1
-        ,googleOAuthEnabled: true
+        ,googleOAuthEnabled: true,
+        telegramUrl: ''
       }).onConflictDoNothing();
 
       // Update only legacy default announcements; preserve administrator-created text.

@@ -2,7 +2,7 @@ import { db as pgDb } from '../../src/db/index.ts';
 import { users } from '../../src/db/schema.ts';
 import { User, db as fileDb } from '../db.js';
 import crypto from 'crypto';
-import { eq, isNotNull } from 'drizzle-orm';
+import { eq, ilike, isNotNull } from 'drizzle-orm';
 
 export class UserRepository {
   async getAdmins(): Promise<User[]> {
@@ -74,7 +74,7 @@ export class UserRepository {
     }
 
     try {
-      const result = await pgDb.select().from(users).where(eq(users.username, username));
+      const result = await pgDb.select().from(users).where(ilike(users.username, username));
       if (!result[0]) return null;
       return {
         ...result[0],
@@ -93,7 +93,7 @@ export class UserRepository {
     }
 
     try {
-      const result = await pgDb.select().from(users).where(eq(users.email, email));
+      const result = await pgDb.select().from(users).where(ilike(users.email, email));
       if (!result[0]) return null;
       return {
         ...result[0],
@@ -124,8 +124,8 @@ export class UserRepository {
     }
   }
 
-  async create(user: Omit<User, 'id' | 'createdAt'> & { signupIp?: string }): Promise<User> {
-    const id = 'user-' + Math.random().toString(36).substr(2, 9);
+  async create(user: Omit<User, 'id' | 'createdAt'> & { id?: string; signupIp?: string }): Promise<User> {
+    const id = user.id || ('user-' + Math.random().toString(36).substr(2, 9));
     const newUser = {
       id,
       mobile: user.mobile,

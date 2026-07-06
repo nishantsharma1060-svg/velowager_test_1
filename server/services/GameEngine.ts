@@ -20,6 +20,7 @@ export class GameEngine {
   
   // In-memory runtime state for live counters
   private activeStates = new Map<string, RoundState>();
+  private isTicking = false;
   
   // Admin manual overrides cache: roundId -> manual outcome
   private manualOverrides = new Map<string, { color?: string; number?: number }>();
@@ -62,7 +63,9 @@ export class GameEngine {
     
     // Core tick loop every 1 second
     setInterval(() => {
-      this.tick();
+      if (this.isTicking) return;
+      this.isTicking = true;
+      this.tick().finally(() => { this.isTicking = false; });
     }, 1000);
   }
 
@@ -135,6 +138,12 @@ export class GameEngine {
             };
 
             this.activeStates.set(key, state);
+
+            // Recover rounds left open by a restart, cold start, or transient DB error.
+            const staleRounds = await this.gameRepo.getStaleUnsettledRounds(gameId, config.mode, formattedPeriod);
+            for (const staleRound of staleRounds.reverse()) {
+              await this.handleRoundSettle(gameId, config.mode, staleRound.periodNumber);
+            }
             
             // Invoke optional game start hook
             if (isNew) {

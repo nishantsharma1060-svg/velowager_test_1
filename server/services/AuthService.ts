@@ -34,9 +34,15 @@ export class AuthService {
     }
 
     if (username) {
+      if (!/^[A-Za-z][A-Za-z0-9_]{2,23}$/.test(username)) {
+        throw new Error('Username must be 3-24 characters, start with a letter, and contain only letters, numbers, or underscores.');
+      }
       const existingByUsername = await this.userRepo.findByUsername(username);
       if (existingByUsername) {
         throw new Error('Username already taken. Please choose another one.');
+      }
+      if (await this.userRepo.findById(username)) {
+        throw new Error('This username is reserved. Please choose another one.');
       }
     }
 
@@ -62,6 +68,7 @@ export class AuthService {
     
     // Create the user
     const newUser = await this.userRepo.create({
+      id: username,
       mobile,
       username,
       email,

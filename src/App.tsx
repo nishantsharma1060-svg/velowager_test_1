@@ -1467,8 +1467,9 @@ export default function App() {
         if (d && d.state) {
           const matchingModeState = d.state.find((s: any) => s.gameMode === selectedMode);
           if (matchingModeState) {
-            // Check if we just rolled over to a brand-new round (timeLeft reset to max)
-            const wasSettle = gameState && gameState.timeLeft === 1 && matchingModeState.timeLeft > 1;
+            // Detect rollover by the canonical period ID. Polling can legitimately
+            // skip the single timeLeft=1 frame on slow/free instances.
+            const wasSettle = !!gameState && gameState.periodNumber !== matchingModeState.periodNumber;
             
             setGameState(matchingModeState);
             
@@ -1493,6 +1494,12 @@ export default function App() {
 
     return () => clearInterval(clockInterval);
   }, [selectedMode, gameState, playSettleSound, fetchGameHistory, fetchWallet, fetchBets, fetchTransactions, fetchNotifications, activeTab, fetchAdminData]);
+
+  // Keep result history fresh even if a browser tab is throttled or misses a rollover poll.
+  useEffect(() => {
+    const historyInterval = window.setInterval(() => fetchGameHistory(), 10000);
+    return () => window.clearInterval(historyInterval);
+  }, [selectedMode, fetchGameHistory]);
 
   // Initial Game History fetch & Tab shifts
   useEffect(() => {
@@ -2186,6 +2193,14 @@ export default function App() {
     const link = `${window.location.origin}?ref=${code}`;
     navigator.clipboard.writeText(link);
     alert('Referral Promotion Link copied successfully! Share it with friends to register.');
+  };
+
+  const getReferralLink = (code: string) => `${window.location.origin}/?ref=${encodeURIComponent(code)}`;
+
+  const shareReferralOnTelegram = (code: string) => {
+    const referralLink = getReferralLink(code);
+    const text = 'Join me on VeloWager and earn rewards.';
+    window.open(`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
   };
 
   // ==========================================
@@ -4734,6 +4749,11 @@ export default function App() {
                             <Copy className="w-4.5 h-4.5" />
                           </button>
                         </div>
+                        <span className="text-[10px] text-zinc-500 uppercase font-black tracking-wider mb-2 self-start">My Referral Link</span>
+                        <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 px-3 py-2 rounded-xl mb-4 w-full">
+                          <input readOnly value={referralsData ? getReferralLink(referralsData.referralCode) : ''} className="grow min-w-0 bg-transparent text-[10px] text-zinc-400 font-mono outline-none" />
+                          <button onClick={() => handleCopyLink(referralsData?.referralCode || '')} className="text-zinc-400 hover:text-white"><Copy className="w-4 h-4" /></button>
+                        </div>
                         
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
                           <button 
@@ -4750,6 +4770,14 @@ export default function App() {
                             <span>Copy Promotion Link</span>
                           </button>
                         </div>
+                        <button onClick={() => shareReferralOnTelegram(referralsData?.referralCode || '')} disabled={!referralsData?.referralCode} className="mt-2 w-full bg-sky-500 hover:bg-sky-600 disabled:opacity-40 text-white rounded-lg py-2 text-xs font-bold transition">
+                          Share Referral on Telegram
+                        </button>
+                        {platformConfig?.telegramUrl && (
+                          <a href={platformConfig.telegramUrl} target="_blank" rel="noopener noreferrer" className="mt-2 w-full bg-sky-500/15 hover:bg-sky-500 text-sky-400 hover:text-white border border-sky-500/20 rounded-lg py-2 text-xs font-bold transition flex items-center justify-center gap-1.5">
+                            <ArrowUpRight className="w-3.5 h-3.5" /> Join Telegram Community
+                          </a>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -6409,6 +6437,11 @@ export default function App() {
                           className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2 px-3 text-xs text-white focus:outline-none font-mono text-[11px]"
                         />
                       </div>
+                    </div>
+
+                    <div className="pb-4 mb-4 border-b border-zinc-800">
+                      <label className="block text-[10px] uppercase font-black text-zinc-500 mb-1">Telegram Community Link</label>
+                      <input type="url" defaultValue={adminSettings?.telegramUrl || ''} placeholder="https://t.me/your_channel" onBlur={(e) => handleAdminSettingsSubmit({ telegramUrl: e.target.value.trim() })} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2 px-3 text-xs text-white focus:outline-none font-mono" />
                     </div>
 
                     <div className="flex flex-col sm:flex-row sm:items-center gap-4 py-3 border-t border-b border-zinc-800">
