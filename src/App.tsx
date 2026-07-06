@@ -3161,7 +3161,7 @@ export default function App() {
                 {authMode === 'login' ? 'Proceed Secure Sign-In' : authMode === 'register' ? 'Submit Registration' : 'Update Password'}
               </button>
 
-              <div className="relative my-6 py-2">
+              {platformConfig?.googleOAuthEnabled && <><div className="relative my-6 py-2">
                 <div className="absolute inset-0 flex items-center">
                   <div className="w-full border-t border-zinc-850"></div>
                 </div>
@@ -3170,7 +3170,7 @@ export default function App() {
                 </div>
               </div>
 
-              {platformConfig?.googleOAuthEnabled && (<button
+              <button
                 type="button"
                 onClick={handleGoogleAuth}
                 disabled={googleLoading}
@@ -3183,7 +3183,7 @@ export default function App() {
                   <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.85c.87-2.6 3.3-4.53 6.16-4.53z"/>
                 </svg>
                 <span>{googleLoading ? 'Connecting Google Account...' : authMode === 'login' ? 'Sign In with Google' : 'Sign Up with Google'}</span>
-              </button>)}
+              </button></>}
 
             </form>
           </div>
@@ -8115,10 +8115,10 @@ export default function App() {
     </main>
 
       {/* FOOTER METADATA INFO */}
-      <footer className="bg-[#0b0c0e] border-t border-zinc-900 text-center py-6 mt-12 text-[10px] text-zinc-600 font-mono tracking-wide" id="bottom_footer">
-        <div className="max-w-7xl mx-auto px-4">
-          <p>© 2026 VeloWager Pro Platform. Built on SOLID Principles & Repository Service architectures.</p>
-          <p className="mt-1">Compatible with PGSQL/MySQL. Scale-ready for crash, tower, dice, mines and sports modules.</p>
+      <footer className="bg-[#0b0c0e] border-t border-zinc-900 py-5 mt-8 text-[10px] text-zinc-600" id="bottom_footer">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
+          <p>© {new Date().getFullYear()} VeloWager. All rights reserved.</p>
+          <div className="flex items-center gap-3"><span>18+ · Play responsibly</span>{platformConfig?.telegramUrl && <a href={platformConfig.telegramUrl} target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300">Telegram Support</a>}</div>
         </div>
       </footer>
 
