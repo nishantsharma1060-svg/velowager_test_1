@@ -128,6 +128,7 @@ router.get('/config', (req, res) => {
     wageringMultiplier: settings.wageringMultiplier ?? 1,
     affiliateBannerText: settings.affiliateBannerText ?? 'Earn passive income by inviting your friends!',
     affiliateBannerImageUrl: settings.affiliateBannerImageUrl ?? '',
+    googleOAuthEnabled: (settings.googleOAuthEnabled ?? true) && !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET,
     paymentGateways: (settings.paymentGateways || []).map(g => ({
       id: g.id,
       name: g.name,
@@ -298,6 +299,11 @@ router.get('/auth/google/url', (req, res) => {
   const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const appUrl = getAppUrl(req);
 
+  if (db.settings.googleOAuthEnabled === false) {
+    res.status(403).json({ error: 'Google Sign-In is currently disabled' });
+    return;
+  }
+
   if (!googleClientId || !googleClientSecret) {
     res.status(503).json({ error: 'Google Sign-In is not configured on this server' });
     return;
@@ -310,6 +316,10 @@ router.get('/auth/google/url', (req, res) => {
 
 // Google OAuth Redirect Callback Endpoint
 router.get(['/auth/google/callback', '/auth/google/callback/'], async (req, res) => {
+  if (db.settings.googleOAuthEnabled === false) {
+    res.status(403).send('Google Sign-In is currently disabled');
+    return;
+  }
   const code = req.query.code as string;
   const state = req.query.state as string;
   const stateExpiry = googleOAuthStates.get(state);
@@ -2786,9 +2796,14 @@ router.post('/admin/settings', authenticateToken, requireAdmin, (req: Authentica
     highBetAlwaysLoss,
     affiliateBannerText,
     affiliateBannerImageUrl
+    ,googleOAuthEnabled
   } = req.body;
 
   try {
+    if (googleOAuthEnabled === true && (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET)) {
+      res.status(400).json({ error: 'Configure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET before enabling Google OAuth' });
+      return;
+    }
     const updatedSettings = {
       signupBonus: signupBonus !== undefined ? Number(signupBonus) : db.settings.signupBonus,
       referralCommissionPercent: referralCommissionPercent !== undefined ? Number(referralCommissionPercent) : db.settings.referralCommissionPercent,
@@ -2802,6 +2817,7 @@ router.post('/admin/settings', authenticateToken, requireAdmin, (req: Authentica
       highBetAlwaysLoss: highBetAlwaysLoss !== undefined ? Boolean(highBetAlwaysLoss) : (db.settings.highBetAlwaysLoss ?? false),
       affiliateBannerText: affiliateBannerText !== undefined ? String(affiliateBannerText) : (db.settings.affiliateBannerText ?? 'Earn passive income by inviting your friends!'),
       affiliateBannerImageUrl: affiliateBannerImageUrl !== undefined ? String(affiliateBannerImageUrl) : (db.settings.affiliateBannerImageUrl ?? ''),
+      googleOAuthEnabled: googleOAuthEnabled !== undefined ? Boolean(googleOAuthEnabled) : (db.settings.googleOAuthEnabled ?? true),
       paymentGateways: req.body.paymentGateways !== undefined ? req.body.paymentGateways : db.settings.paymentGateways
     };
 

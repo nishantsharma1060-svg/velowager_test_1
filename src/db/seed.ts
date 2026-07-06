@@ -22,6 +22,7 @@ export async function seedIfNeeded() {
           'Refer friends using your referral code and earn 5% of their total bets instantly in your wallet!'
         ],
         wageringMultiplier: 1
+        ,googleOAuthEnabled: true
       }).onConflictDoNothing();
 
       // 2. Seed Games

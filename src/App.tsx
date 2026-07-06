@@ -3134,7 +3134,7 @@ export default function App() {
                 </div>
               </div>
 
-              <button
+              {platformConfig?.googleOAuthEnabled && (<button
                 type="button"
                 onClick={handleGoogleAuth}
                 disabled={googleLoading}
@@ -3147,7 +3147,7 @@ export default function App() {
                   <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.85c.87-2.6 3.3-4.53 6.16-4.53z"/>
                 </svg>
                 <span>{googleLoading ? 'Connecting Google Account...' : authMode === 'login' ? 'Sign In with Google' : 'Sign Up with Google'}</span>
-              </button>
+              </button>)}
 
             </form>
           </div>
@@ -6384,6 +6384,16 @@ export default function App() {
                     </div>
 
                     <div className="flex flex-col sm:flex-row sm:items-center gap-4 py-3 border-t border-b border-zinc-800">
+                      <div className="flex items-center gap-2 sm:border-r sm:border-zinc-800 sm:pr-4">
+                        <input
+                          type="checkbox"
+                          id="google_oauth_enabled_cb"
+                          checked={adminSettings?.googleOAuthEnabled ?? true}
+                          onChange={(e) => handleAdminSettingsSubmit({ googleOAuthEnabled: e.target.checked })}
+                          className="w-4 h-4 bg-zinc-900 border border-zinc-800 rounded text-blue-500 focus:ring-0"
+                        />
+                        <label htmlFor="google_oauth_enabled_cb" className="text-xs font-bold text-blue-400">Enable Google OAuth</label>
+                      </div>
                       <div className="flex items-center gap-2">
                         <input 
                           type="checkbox" 

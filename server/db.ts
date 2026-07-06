@@ -186,6 +186,7 @@ export interface PlatformSettings {
   affiliateBannerImageUrl?: string;
   autoSettleCommissions?: boolean;
   paymentGateways?: PaymentGateway[];
+  googleOAuthEnabled?: boolean;
 }
 
 export interface AuditLog {
@@ -261,6 +262,7 @@ class PostgresDatabase {
         affiliateBannerText: 'Earn passive income by inviting your friends!',
         affiliateBannerImageUrl: '',
         autoSettleCommissions: true,
+        googleOAuthEnabled: true,
         paymentGateways: [
           {
             id: 'jazpays',
@@ -439,6 +441,7 @@ class PostgresDatabase {
           affiliateBannerImageUrl: settingsList[0].affiliateBannerImageUrl,
           autoSettleCommissions: settingsList[0].autoSettleCommissions,
           paymentGateways: (settingsList[0] as any).paymentGateways || [],
+          googleOAuthEnabled: settingsList[0].googleOAuthEnabled,
         };
       }
 
@@ -494,6 +497,7 @@ class PostgresDatabase {
           affiliateBannerImageUrl: this.data.settings.affiliateBannerImageUrl ?? '',
           autoSettleCommissions: this.data.settings.autoSettleCommissions ?? true,
           paymentGateways: this.data.settings.paymentGateways || [],
+          googleOAuthEnabled: this.data.settings.googleOAuthEnabled ?? true,
         }).where(eq(pgPlatformSettings.id, 1));
       }
 

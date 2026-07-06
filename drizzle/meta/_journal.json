@@ -15,6 +15,13 @@
       "when": 1783340966283,
       "tag": "0001_smiling_tombstone",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783351288812,
+      "tag": "0002_regular_rafael_vega",
+      "breakpoints": true
     }
   ]
 }

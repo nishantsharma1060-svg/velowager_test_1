@@ -140,6 +140,7 @@ export const platformSettings = pgTable('platform_settings', {
   affiliateBannerImageUrl: text('affiliate_banner_image_url').default('').notNull(),
   autoSettleCommissions: boolean('auto_settle_commissions').default(true).notNull(),
   paymentGateways: jsonb('payment_gateways').$type<any[]>().default([]).notNull(),
+  googleOAuthEnabled: boolean('google_oauth_enabled').default(true).notNull(),
 });
 
 // 11. AuditLogs Table
@@ -195,4 +196,3 @@ export const coupons = pgTable('coupons', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   redeemedAt: timestamp('redeemed_at'),
 });
-

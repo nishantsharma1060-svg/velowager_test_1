@@ -19,7 +19,7 @@ async function startServer() {
     throw new Error('DATABASE_URL is required. Add it to the Render service environment variables.');
   }
   if (process.env.NODE_ENV === 'production') {
-    const required = ['APP_URL', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'MASTER_ADMIN_PASSWORD', 'PAYMENT_CALLBACK_SECRET'];
+    const required = ['APP_URL', 'MASTER_ADMIN_PASSWORD', 'PAYMENT_CALLBACK_SECRET'];
     const missing = required.filter(key => !process.env[key]);
     if (missing.length) throw new Error(`Missing required production environment variables: ${missing.join(', ')}`);
   }
