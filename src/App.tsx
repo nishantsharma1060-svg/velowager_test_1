@@ -923,7 +923,6 @@ export default function App() {
         // Trigger exponential backoff after 30 seconds
         // Starting at 3 seconds, doubling the delay each step, up to a maximum of 60 seconds (60000ms)
         currentDelay = Math.min(currentDelay * 2, 60000);
-        console.log(`[Payment Status Poller] Webhook callback not received within 30s. Triggering exponential backoff. Next check in ${currentDelay / 1000}s.`);
       } else {
         // Flat 3 seconds interval during the initial 30 seconds
         currentDelay = 3000;
@@ -1992,7 +1991,6 @@ export default function App() {
             setHasOpenedPaymentWindow(true);
           }
         } catch (popupErr) {
-          console.log('[Popup Blocker] Browser blocked automatic window open, fallback to manual click.');
         }
 
         // Close the wallet modal if it is currently open, to make room for our tracking modal

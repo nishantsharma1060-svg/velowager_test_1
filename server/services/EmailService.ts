@@ -64,7 +64,6 @@ export class EmailService {
         }
       });
       this.isConfigured = true;
-      console.log(`[EmailService] SMTP Transporter configured successfully for host ${host}:${port}`);
     } else {
       console.warn(
         `[EmailService] SMTP credentials not fully configured (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS missing). ` +
@@ -226,7 +225,6 @@ export class EmailService {
           senderInfo.email = process.env.SMTP_USER;
         }
 
-        console.log(`[EmailService] Detected Brevo API key. Dispatching OTP to ${toEmail} via Brevo HTTP REST API (from: ${senderInfo.email})...`);
         const response = await fetch("https://api.brevo.com/v3/smtp/email", {
           method: "POST",
           headers: {
@@ -252,7 +250,6 @@ export class EmailService {
         });
 
         if (response.status === 201 || response.status === 200) {
-          console.log(`[EmailService] OTP email sent successfully to ${toEmail} via Brevo REST API`);
           return { success: true };
         } else {
           const errMsg = await response.text();
@@ -277,7 +274,6 @@ export class EmailService {
         html: htmlContent,
         text: `Hello, use the following security verification code to authenticate: ${otp}. It will expire in 5 minutes. Please do not share this code with anyone.`
       });
-      console.log(`[EmailService] OTP email sent successfully to ${toEmail}`);
       return { success: true };
     } catch (err: any) {
       console.error(`[EmailService] Error occurred while sending email to ${toEmail}:`, err);

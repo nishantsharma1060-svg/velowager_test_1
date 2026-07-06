@@ -1191,7 +1191,6 @@ router.post('/payments/create-order', authenticateToken, async (req: Authenticat
         signature: signature
       };
 
-      console.log(`[Payment Gateway] Dispatching payment order creation request to URL: ${selectedGateway.apiUrl} using gateway: ${selectedGateway.name}`);
       
       const response = await fetch(selectedGateway.apiUrl, {
         method: 'POST',
@@ -1207,7 +1206,6 @@ router.post('/payments/create-order', authenticateToken, async (req: Authenticat
       }
 
       const responseData = await response.json();
-      console.log('[Payment Gateway] Response data received:', responseData);
 
       // Extract checkout redirect URL
       const extractedPaymentUrl = responseData.payment_url || 
@@ -1281,7 +1279,6 @@ router.all('/payments/callback', async (req, res) => {
     }
 
     if (order.status !== 'pending') {
-      console.log(`[Payment Callback] Order ${orderId} is already completed/processed with status: ${order.status}`);
       if (params.merchantOrder || params.orderNo || !params.orderId) {
         res.status(200).send('success');
       } else {
@@ -1403,7 +1400,6 @@ router.all('/payments/callback', async (req, res) => {
       rawStatus === '1' || 
       rawStatus === 1;
 
-    console.log(`[Payment Callback Callback] Webhook verification success. Order ID: ${orderId}, Result Status: ${isSuccessState ? 'SUCCESS' : 'FAILED'}, Gateway Tx: ${gatewayTxId}`);
 
     if (isSuccessState) {
       // 1. Process deposit into user wallet (Auto-approve deposit transaction)
@@ -1550,7 +1546,6 @@ router.post('/payments/simulate-success', authenticateToken, async (req: Authent
       signature: calculatedSignature
     };
 
-    console.log(`[Payment Gateway Simulation] Dispatching real callback webhook request to local URL: http://localhost:3000/api/payments/callback`);
     const callbackResponse = await fetch('http://localhost:3000/api/payments/callback', {
       method: 'POST',
       headers: {
@@ -1565,7 +1560,6 @@ router.post('/payments/simulate-success', authenticateToken, async (req: Authent
     }
 
     const callbackResponseText = await callbackResponse.text();
-    console.log('[Payment Gateway Simulation] Webhook callback returned success response:', callbackResponseText);
 
     logAudit(`Simulated Payment Gateway Webhook success for order ${orderId} (₹${order.amount}) via real HTTP callback`, order.userId);
     res.json({ success: true, message: 'Simulated callback executed successfully via real HTTP webhook request! Your wallet has been credited.' });
@@ -1827,7 +1821,6 @@ router.post('/game/flip/play', authenticateToken, async (req: AuthenticatedReque
     let forceLoss = false;
     if (betAmount > totalBalance * 0.2) {
       forceLoss = true;
-      console.log(`[Flip] Bet ₹${betAmount} is > 20% of balance ₹${totalBalance}. Forcing loss.`);
     }
 
     // Determine the result of flip
@@ -1980,7 +1973,6 @@ router.post('/game/mines/start', authenticateToken, async (req: AuthenticatedReq
     let forceLoss = false;
     if (betAmount > totalBalance * 0.3) {
       forceLoss = true;
-      console.log(`[Mines] Bet ₹${betAmount} is > 30% of balance ₹${totalBalance}. Forcing loss.`);
     }
 
     // 5% house edge chance of forced loss
@@ -2264,7 +2256,6 @@ router.post('/game/crash/start', authenticateToken, async (req: AuthenticatedReq
     let crashPoint = 1.0;
     if (betAmount > totalBalance * 0.2) {
       crashPoint = 1.01;
-      console.log(`[Crash] Bet ₹${betAmount} is > 20% of balance ₹${totalBalance}. Forcing 1.01x crash.`);
     } else if (Math.random() < 0.05) {
       crashPoint = 1.0; // Instant crash! (representing 5% house edge)
     } else {

@@ -59,7 +59,6 @@ export class GameEngine {
    * Synchronize & launch the master clock tick handler
    */
   public startClock() {
-    console.log('GameEngine: Starting master clocks for WinGo modes...');
     
     // Core tick loop every 1 second
     setInterval(() => {
@@ -207,7 +206,6 @@ export class GameEngine {
       // Cleanup override cache for memory safety
       this.manualOverrides.delete(round.id);
       
-      console.log(`GameEngine: Settled round ${periodNumber} for ${gameId} [Result: ${settlement.resultNumber} / ${settlement.resultColor}]`);
     } catch (err) {
       console.error(`Error settling round for ${gameId} ${mode} ${periodNumber}:`, err);
     }

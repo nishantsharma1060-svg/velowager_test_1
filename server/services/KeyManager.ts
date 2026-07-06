@@ -44,7 +44,6 @@ export class KeyManager {
    * Mock Secret Manager Connectors for Google Secret Manager, AWS Secrets Manager, Azure Key Vault, Hashicorp Vault
    */
   public static async fetchSecretFromManager(managerName: 'gcp' | 'aws' | 'azure' | 'hashicorp', secretName: string): Promise<string> {
-    console.log(`[KeyManager] Querying Secure Vault [${managerName.toUpperCase()}] for secret: ${secretName}`);
     // Real API integrations would go here.
     // Sandbox fallback returns local environment configurations
     const envValue = process.env[secretName];
@@ -56,7 +55,6 @@ export class KeyManager {
    * Key Rotation Helper
    */
   public static rotateKey(oldData: string, oldIv: string): { iv: string; encryptedData: string } {
-    console.log('[KeyManager] Rotating cryptographic secret keys...');
     const decrypted = this.decrypt(oldData, oldIv);
     return this.encrypt(decrypted);
   }

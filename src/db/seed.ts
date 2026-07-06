@@ -1,13 +1,8 @@
 import { db } from './index.ts';
 import { platformSettings, games, users, wallets, referrals, notifications } from './schema.ts';
-import { count } from 'drizzle-orm';
 
 export async function seedIfNeeded() {
   try {
-    const settingsCountResult = await db.select({ value: count() }).from(platformSettings);
-    const settingsCount = settingsCountResult[0]?.value ?? 0;
-    if (settingsCount === 0) {
-      console.log('Seeding PostgreSQL database...');
       
       // 1. Seed Settings
       await db.insert(platformSettings).values({
@@ -24,7 +19,7 @@ export async function seedIfNeeded() {
           'Refer friends using your referral code and earn 5% of their total bets instantly in your wallet!'
         ],
         wageringMultiplier: 1
-      });
+      }).onConflictDoNothing();
 
       // 2. Seed Games
       await db.insert(games).values([
@@ -60,7 +55,7 @@ export async function seedIfNeeded() {
           minBet: 10,
           maxBet: 50000
         }
-      ]);
+      ]).onConflictDoNothing();
 
       // 3. Seed Users
       await db.insert(users).values([
@@ -81,20 +76,20 @@ export async function seedIfNeeded() {
           status: 'active',
           isAgent: false
         }
-      ]);
+      ]).onConflictDoNothing();
 
       // 4. Seed Wallets
       await db.insert(wallets).values([
         { userId: 'admin-1', balance: 10000, promoBalance: 0 },
         { userId: 'user-1', balance: 1000, promoBalance: 100 }
-      ]);
+      ]).onConflictDoNothing();
 
       // 5. Seed Referrals
       await db.insert(referrals).values({
         id: 'ref-seed-1',
         referrerId: 'admin-1',
         refereeId: 'user-1'
-      });
+      }).onConflictDoNothing();
 
       // 6. Seed Notifications
       await db.insert(notifications).values({
@@ -103,11 +98,9 @@ export async function seedIfNeeded() {
         title: 'Welcome to the Platform!',
         content: 'Your account is verified. You have received a ₹100 sign-up bonus!',
         isRead: false
-      });
+      }).onConflictDoNothing();
 
-      console.log('PostgreSQL database seeded successfully!');
-    }
   } catch (error) {
-    console.error('Failed to seed database:', error);
+    throw new Error('Failed to seed PostgreSQL database', { cause: error });
   }
 }

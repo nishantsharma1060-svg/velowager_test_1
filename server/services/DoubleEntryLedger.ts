@@ -64,7 +64,6 @@ export class DoubleEntryLedger {
       this.entries.push(newEntry);
     });
 
-    console.log(`[DoubleEntryLedger] Successfully committed immutable balanced transaction block: ${txId}. legs: ${legs.length}`);
   }
 
   /**

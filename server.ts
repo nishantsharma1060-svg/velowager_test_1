@@ -1,10 +1,9 @@
 import dotenv from 'dotenv';
-import fs from 'fs';
+dotenv.config({ quiet: true });
 import path from 'path';
-import { fileURLToPath } from 'url';
 
 // Load environment variables from .env and fall back to .env.example if .env doesn't exist
-dotenv.config();
+
 
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
@@ -13,13 +12,10 @@ import { seedIfNeeded } from './src/db/seed.ts';
 import { gameEngine } from './server/services/GameEngine.js';
 import apiRouter from './server/api.js';
 
-const distPath = path.join(process.cwd(), "dist");
-
 async function startServer() {
   // Initialize and seed PostgreSQL database
-  console.log('Server: Initializing Cloud SQL PostgreSQL connection...');
-  await db.init();
   await seedIfNeeded();
+  await db.init();
 
   const app = express();
   app.set('trust proxy', true);
@@ -37,8 +33,6 @@ async function startServer() {
   gameEngine.startClock();
 
   if (!isProd) {
-    console.log('Server: Running in DEVELOPMENT mode. Integrating Vite middleware...');
-    
     // Create Vite dev server in middleware mode with spa support
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -48,8 +42,6 @@ async function startServer() {
     // Use Vite's connect instance as middleware
     app.use(vite.middlewares);
   } else {
-    console.log('Server: Running in PRODUCTION mode. Serving pre-built static files...');
-    
     // Serve static compiled assets from dist/
     const distPath = path.resolve(__dirname, 'dist');
     app.use(express.static(distPath));
@@ -60,9 +52,7 @@ async function startServer() {
     });
   }
 
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`Modular Gaming Platform Server started successfully at http://localhost:${port}`);
-  });
+  app.listen(port, '0.0.0.0');
 }
 
 startServer().catch((err) => {

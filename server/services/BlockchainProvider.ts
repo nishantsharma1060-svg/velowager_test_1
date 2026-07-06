@@ -75,7 +75,6 @@ export class EthereumProvider extends BaseBlockchainProvider {
   }
 
   watchDeposits(callback: (deposit: BlockchainDepositEvent) => void): void {
-    console.log('[EthereumProvider] Deposit watching listener registered.');
     // Real implementation would connect to WebSocket RPC and listen to Pending Transactions
     // Mock simulation triggers after 15 seconds to simulate real blockchain block confirmation
     setTimeout(() => {
@@ -200,7 +199,6 @@ export class EthereumProvider extends BaseBlockchainProvider {
   }
 
   async retryFailedBroadcast(txHash: string): Promise<boolean> {
-    console.log(`[EthereumProvider] Retrying broadcast of transaction: ${txHash}`);
     return true; // Simple mock hook for recovery queue
   }
 }
@@ -235,7 +233,6 @@ export class TronProvider extends BaseBlockchainProvider {
   }
 
   watchDeposits(callback: (deposit: BlockchainDepositEvent) => void): void {
-    console.log('[TronProvider] Deposit listener registered.');
   }
 
   async watchConfirmations(txHash: string, requiredConfirmations: number, callback: (confirmations: number) => void): Promise<void> {

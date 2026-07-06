@@ -4,21 +4,34 @@ const { Pool } = pkg;
 import * as schema from './schema.ts';
 
 // Configure the database connection pool parameters
-const poolConfig = {
-  host: process.env.SQL_HOST,
-  port: Number(process.env.SQL_PORT || 5432),
-  user: process.env.SQL_USER,
-  password: process.env.SQL_PASSWORD,
-  database: process.env.SQL_DB_NAME,
-  connectionTimeoutMillis: 15000, // Wait up to 15 seconds to connect
-  idleTimeoutMillis: 10000,       // Close idle connections after 10 seconds to avoid stale sockets
-  max: 20,                        // Allow up to 20 concurrent connections
-  keepAlive: true,                // Enable TCP keepalive to keep connections healthy
-  keepAliveInitialDelayMillis: 10000, // Send TCP keepalive after 10 seconds of inactivity
-};
+// const poolConfig = {
+//   host: process.env.SQL_HOST,
+//   port: Number(process.env.SQL_PORT || 5432),
+//   user: process.env.SQL_USER,
+//   password: process.env.SQL_PASSWORD,
+//   database: process.env.SQL_DB_NAME,
+//   connectionTimeoutMillis: 15000, // Wait up to 15 seconds to connect
+//   idleTimeoutMillis: 10000,       // Close idle connections after 10 seconds to avoid stale sockets
+//   max: 20,                        // Allow up to 20 concurrent connections
+//   keepAlive: true,                // Enable TCP keepalive to keep connections healthy
+//   keepAliveInitialDelayMillis: 10000, // Send TCP keepalive after 10 seconds of inactivity
+// };
 
 // Create a single stable pool instance that will be used by Drizzle
-const pool = new Pool(poolConfig);
+// const pool = new Pool(poolConfig);
+
+import dotenv from "dotenv";
+
+dotenv.config({ quiet: true });
+
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false,
+    },
+});
+
+
 
 // Catch and handle idle client errors to prevent unexpected server crashes and avoid health-check alarm false positives
 pool.on('error', (err: any) => {
@@ -85,10 +98,6 @@ pool.query = async function (...args: any[]) {
       attempts++;
       if (isConnectionError(err) && attempts < maxAttempts) {
         const delay = getBackoffDelay(attempts);
-        console.log(
-          `[Database Query] Auto-refreshing stale connection slot (attempt ${attempts}/${maxAttempts}). ` +
-          `Retrying query in ${Math.round(delay)}ms.`
-        );
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
@@ -127,9 +136,6 @@ pool.connect = function (...connectArgs: any[]) {
             return await originalClientQuery(...clientArgs);
           } catch (err: any) {
             if (isConnectionError(err)) {
-              console.log(
-                `[Database Client] Connection slot closed. Re-establishing connection context.`
-              );
               client.release(err);
             }
             throw err;
@@ -172,9 +178,6 @@ pool.connect = function (...connectArgs: any[]) {
             return await originalClientQuery(...clientArgs);
           } catch (err: any) {
             if (isConnectionError(err)) {
-              console.log(
-                `[Database Client] Connection slot closed. Re-establishing connection context.`
-              );
               client.release(err); // Pass error to destroy the client connection in the pool
             }
             throw err;
@@ -186,10 +189,6 @@ pool.connect = function (...connectArgs: any[]) {
         attempts++;
         if (isConnectionError(err) && attempts < maxAttempts) {
           const delay = getBackoffDelay(attempts);
-          console.log(
-            `[Database Connect] Retrying slot connection (attempt ${attempts}/${maxAttempts}). ` +
-            `Retrying in ${Math.round(delay)}ms.`
-          );
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }

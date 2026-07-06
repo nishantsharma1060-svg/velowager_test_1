@@ -17,8 +17,6 @@ import {
   coupons as pgCoupons,
 } from '../src/db/schema.ts';
 import { eq } from 'drizzle-orm';
-import fs from 'fs';
-import path from 'path';
 
 // Define DB Models Types
 export interface Coupon {
@@ -228,9 +226,9 @@ export interface DBStructure {
   vaultTransfers?: any[];
 }
 
-class FileDatabase {
+class PostgresDatabase {
   private data: DBStructure;
-  public isOffline = false;
+  public readonly isOffline = false;
 
   constructor() {
     this.data = this.getDefaultStructure();
@@ -285,119 +283,11 @@ class FileDatabase {
     };
   }
 
-  private loadFromFile() {
-    try {
-      const storagePath = path.resolve(process.cwd(), 'storage');
-      const filePath = path.join(storagePath, 'db.json');
-      
-      if (!fs.existsSync(storagePath)) {
-        fs.mkdirSync(storagePath, { recursive: true });
-      }
-      
-      if (fs.existsSync(filePath)) {
-        const fileContent = fs.readFileSync(filePath, 'utf8');
-        this.data = JSON.parse(fileContent);
-        if (!this.data.coupons) {
-          this.data.coupons = [];
-        }
-        if (!this.data.vaultTransfers) {
-          this.data.vaultTransfers = [];
-        }
-        console.log(`[Database] Loaded local offline db.json successfully. Users: ${this.data.users?.length || 0}`);
-      } else {
-        console.log('[Database] db.json not found. Initializing with default structure and offline-seeding.');
-        this.data = this.getDefaultStructure();
-      }
-
-      // Dynamic Seeding of all games
-      const defaultGames = [
-        {
-          id: 'color-trading',
-          name: 'Color Trading (WinGo)',
-          description: 'Predict colors (Red, Green, Violet) or numbers (0-9) in fast-paced interval draws.',
-          isEnabled: true,
-          minBet: 10,
-          maxBet: 50000
-        },
-        {
-          id: 'mine',
-          name: 'Mines',
-          description: 'Avoid hidden mines on a 5x5 grid and cash out when your multiplier increases!',
-          isEnabled: true,
-          minBet: 10,
-          maxBet: 50000
-        },
-        {
-          id: 'crash',
-          name: 'Crash',
-          description: 'Watch the rocket rise and multiplier grow. Cash out before it crashes!',
-          isEnabled: true,
-          minBet: 10,
-          maxBet: 50000
-        },
-        {
-          id: 'flip',
-          name: 'Coin Flip',
-          description: 'Flip a coin (Heads or Tails) with a transparent, direct payout!',
-          isEnabled: true,
-          minBet: 10,
-          maxBet: 50000
-        }
-      ];
-
-      if (!this.data.games) {
-        this.data.games = [];
-      }
-
-      let modified = false;
-      for (const dg of defaultGames) {
-        if (!this.data.games.some(g => g.id === dg.id)) {
-          this.data.games.push(dg);
-          modified = true;
-        }
-      }
-
-      if (modified || !fs.existsSync(filePath)) {
-        this.saveToFile();
-      }
-    } catch (err) {
-      console.error('[Database] Failed to load data from db.json:', err);
-      this.data = this.getDefaultStructure();
-    }
-  }
-
-  private saveToFile() {
-    try {
-      const storagePath = path.resolve(process.cwd(), 'storage');
-      const filePath = path.join(storagePath, 'db.json');
-      if (!fs.existsSync(storagePath)) {
-        fs.mkdirSync(storagePath, { recursive: true });
-      }
-      fs.writeFileSync(filePath, JSON.stringify(this.data, null, 2), 'utf8');
-    } catch (err) {
-      console.error('[Database] Failed to write data to db.json:', err);
-    }
-  }
-
   public async init() {
-    const requestedType = (process.env.DATABASE_TYPE || '').toLowerCase();
-    const hasPostgresConfig = !!process.env.SQL_HOST;
-
-    if (requestedType === 'file' || requestedType === 'local' || !hasPostgresConfig) {
-      console.log('[Database] Mode explicitly set to OFFLINE or Postgres host is missing. Falling back to db.json file-based database.');
-      this.isOffline = true;
-      this.loadFromFile();
-    } else {
-      console.log('[Database] Connecting to Cloud SQL PostgreSQL database...');
-      try {
-        await this.refreshCache();
-        console.log('[Database] PostgreSQL connection established and cache initialized successfully.');
-      } catch (e: any) {
-        console.error(`[Database] Failed to connect to PostgreSQL: ${e.message || e}. Gracefully falling back to OFFLINE (db.json) mode.`);
-        this.isOffline = true;
-        this.loadFromFile();
-      }
+    if (!process.env.DATABASE_URL) {
+      throw new Error('DATABASE_URL is required; PostgreSQL is the only supported database');
     }
+    await this.refreshCache();
   }
 
   public async refreshCache() {
@@ -579,15 +469,11 @@ class FileDatabase {
       })) as Coupon[];
 
     } catch (err) {
-      console.error('Failed to refresh database cache:', err);
+      throw err;
     }
   }
 
   public async save() {
-    if (this.isOffline) {
-      this.saveToFile();
-      return;
-    }
     try {
       // 1. Sync Platform Settings
       if (this.data.settings) {
@@ -824,4 +710,4 @@ class FileDatabase {
   }
 }
 
-export const db = new FileDatabase();
+export const db = new PostgresDatabase();

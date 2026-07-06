@@ -51,14 +51,12 @@ class CryptoService {
     }
 
     try {
-      console.log(`[Crypto] Initiating real ETH transfer. To: ${cleanTo}, Amount: ${amount}`);
       
       const tx = await wallet.sendTransaction({
         to: cleanTo,
         value: ethers.parseEther(amount)
       });
 
-      console.log(`[Crypto] ETH transfer successfully broadcasted. Hash: ${tx.hash}`);
 
       const isTestnet = rpcUrl.includes('sepolia') || rpcUrl.includes('goerli');
       const explorerUrl = isTestnet 
@@ -99,7 +97,6 @@ class CryptoService {
     ];
 
     try {
-      console.log(`[Crypto] Initiating real ERC-20 USDT transfer. Contract: ${usdtContractAddress}, To: ${cleanTo}, Amount: ${amount}`);
       const contract = new ethers.Contract(usdtContractAddress, usdtAbi, wallet);
       
       // USDT decimals is normally 6
@@ -107,7 +104,6 @@ class CryptoService {
       const parsedAmount = ethers.parseUnits(amount, decimals);
 
       const tx = await contract.transfer(cleanTo, parsedAmount);
-      console.log(`[Crypto] ERC-20 USDT transfer successfully broadcasted. Hash: ${tx.hash}`);
 
       const isTestnet = rpcUrl.includes('sepolia') || rpcUrl.includes('goerli');
       const explorerUrl = isTestnet 
@@ -144,7 +140,6 @@ class CryptoService {
     }
 
     try {
-      console.log(`[Crypto] Initiating real TRX transfer. To: ${cleanTo}, Amount: ${amount}`);
       
       // Convert TRX to Sun (1 TRX = 1,000,000 Sun)
       const sunAmount = Number(tronWeb.toSun(parseFloat(amount)));
@@ -156,7 +151,6 @@ class CryptoService {
         throw new Error('TRON network broadcast did not return a valid Transaction ID.');
       }
 
-      console.log(`[Crypto] TRX transfer successfully broadcasted. ID: ${txHash}`);
 
       const isTestnet = rpcUrl.includes('nile') || rpcUrl.includes('shasta');
       const explorerUrl = isTestnet 
@@ -195,7 +189,6 @@ class CryptoService {
     const usdtContractAddress = process.env.CRYPTO_TRON_USDT_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 
     try {
-      console.log(`[Crypto] Initiating real TRC-20 USDT transfer. Contract: ${usdtContractAddress}, To: ${cleanTo}, Amount: ${amount}`);
       
       // Get contract instance
       const contract = await tronWeb.contract().at(usdtContractAddress);
@@ -211,7 +204,6 @@ class CryptoService {
         throw new Error('TRC-20 contract execution did not return a valid Transaction ID.');
       }
 
-      console.log(`[Crypto] TRC-20 USDT transfer successfully broadcasted. ID: ${txHash}`);
 
       const isTestnet = rpcUrl.includes('nile') || rpcUrl.includes('shasta');
       const explorerUrl = isTestnet 
@@ -251,7 +243,6 @@ class CryptoService {
     }
 
     try {
-      console.log(`[Crypto] Initiating Bitcoin transaction via Blockcypher. To: ${cleanTo}, Amount: ${amount}`);
       
       // Real Bitcoin transfers can be performed using Blockcypher microtx or tx-skel endpoints.
       // Here is a robust, production-grade microtransaction API integration:
@@ -270,7 +261,6 @@ class CryptoService {
         throw new Error(data.error || 'Failed to broadcast Bitcoin transaction via Blockcypher API.');
       }
 
-      console.log(`[Crypto] BTC transaction successfully broadcasted. Hash: ${data.hash}`);
 
       return {
         txHash: data.hash,

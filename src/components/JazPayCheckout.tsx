@@ -122,7 +122,6 @@ export default function JazPayCheckout({ onBackToApp }: JazPayCheckoutProps) {
       });
 
       const responseText = await callbackResponse.text();
-      console.log('[JazPay Webhook Simulation Response]:', responseText);
 
       // Give a tiny aesthetic delay to simulate network latency
       setTimeout(() => {
