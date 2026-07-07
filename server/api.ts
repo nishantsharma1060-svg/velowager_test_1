@@ -1720,7 +1720,8 @@ router.post('/sports/cashout', authenticateToken, async (req: AuthenticatedReque
     if (!bet) { res.status(404).json({ error: 'Sports bet not found.' }); return; }
     if (bet.status !== 'pending') { res.status(409).json({ error: 'Only pending sports bets can be cashed out.' }); return; }
 
-    const latest = await oddsApiService.getOdds(bet.gameMode, bet.periodNumber);
+    // Cash-out pricing must bypass the display cache and use a fresh provider response.
+    const latest = await oddsApiService.getOdds(bet.gameMode, bet.periodNumber, true);
     const event = (latest.value || []).find((item: any) => item.id === bet.periodNumber);
     if (!event) { res.status(409).json({ error: 'Cash-out is unavailable because this market is suspended or completed.' }); return; }
     const selection = bet.betValue.split(' @ ')[0];
@@ -1731,12 +1732,17 @@ router.post('/sports/cashout', authenticateToken, async (req: AuthenticatedReque
     ).filter((price: number) => Number.isFinite(price) && price > 1);
     if (!currentPrices.length) { res.status(409).json({ error: 'The selected outcome is currently suspended.' }); return; }
 
+    const originalOdds = Number(bet.betValue.split(' @ ')[1]?.split(' ')[0]);
+    if (!Number.isFinite(originalOdds) || originalOdds <= 1) { res.status(409).json({ error: 'The original accepted odds could not be verified.' }); return; }
     const currentOdds = Math.max(...currentPrices);
-    const cashoutAmount = Number((bet.amount * currentOdds * 0.8).toFixed(2));
-    await walletService.creditWinnings(req.user.id, 'sports', cashoutAmount, `Early cash-out: ${selection} at ${currentOdds.toFixed(2)} odds (80% offer)`);
+    const payoutPercentage = 0.8;
+    const cashoutAmount = Number((bet.amount * originalOdds / currentOdds * payoutPercentage).toFixed(2));
+    if (!Number.isFinite(cashoutAmount) || cashoutAmount <= 0) { res.status(409).json({ error: 'A valid cash-out offer could not be calculated.' }); return; }
+    await walletService.creditWinnings(req.user.id, 'sports', cashoutAmount, `Early cash-out: ${selection}; original ${originalOdds.toFixed(2)}, current ${currentOdds.toFixed(2)}`);
+    await gameRepo.updateBetValue(bet.id, `${bet.betValue} · CASHOUT @ ${currentOdds.toFixed(2)}`);
     await gameRepo.updateBetSettlement(bet.id, 'won', cashoutAmount, 0);
     await gameRepo.updateRound(bet.roundId, { status: 'settled', resultColor: 'cashout', totalWinAmount: cashoutAmount, settledAt: new Date().toISOString() });
-    res.json({ message: `Cashed out ₹${cashoutAmount.toFixed(2)} at current odds of ${currentOdds.toFixed(2)}.`, cashoutAmount, currentOdds });
+    res.json({ message: `Cashed out ₹${cashoutAmount.toFixed(2)} using current odds of ${currentOdds.toFixed(2)}.`, cashoutAmount, originalOdds, currentOdds, payoutPercentage });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   } finally {
@@ -2455,6 +2461,38 @@ router.get('/user/bets', authenticateToken, async (req: AuthenticatedRequest, re
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+router.get('/user/sports-bets', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const records = (await gameRepo.getBetsByUserId(req.user.id, 100)).filter(bet => bet.gameId === 'sports');
+    const sportsBets = await Promise.all(records.map(async bet => {
+      const parts = bet.betValue.split(' · ');
+      const selectionPart = parts[0] || '';
+      const originalOdds = Number(selectionPart.split(' @ ')[1]);
+      const cashoutPart = parts.find(part => part.startsWith('CASHOUT @ '));
+      const parsedCashoutOdds = cashoutPart ? Number(cashoutPart.replace('CASHOUT @ ', '')) : null;
+      const round = await gameRepo.findRoundById(bet.roundId);
+      const cashedOut = Boolean(cashoutPart) || round?.resultColor === 'cashout';
+      return {
+        id: bet.id,
+        eventId: bet.periodNumber,
+        sportKey: bet.gameMode,
+        selection: selectionPart.split(' @ ')[0],
+        originalOdds: Number.isFinite(originalOdds) ? originalOdds : null,
+        bookmaker: parts[1] || 'Unknown bookmaker',
+        matchup: parts[2] || bet.periodNumber,
+        wager: bet.amount,
+        payout: bet.winningAmount,
+        fee: bet.winFeeDeducted,
+        status: cashedOut ? 'cashed_out' : bet.status,
+        cashoutOdds: parsedCashoutOdds !== null && Number.isFinite(parsedCashoutOdds) ? parsedCashoutOdds : null,
+        placedAt: bet.createdAt,
+        settledAt: bet.settledAt || null
+      };
+    }));
+    res.json({ bets: sportsBets });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 // Place a bet on a running round

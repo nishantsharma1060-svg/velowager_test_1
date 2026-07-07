@@ -369,6 +369,15 @@ export class GameRepository {
     }
   }
 
+  async updateBetValue(betId: string, betValue: string): Promise<void> {
+    if (fileDb.isOffline) {
+      const bet = fileDb.bets.find(item => item.id === betId);
+      if (bet) { bet.betValue = betValue; await fileDb.save(); }
+      return;
+    }
+    await pgDb.update(bets).set({ betValue }).where(eq(bets.id, betId));
+  }
+
   async getAllBets(limit: number = 100): Promise<Bet[]> {
     if (fileDb.isOffline) {
       return [...fileDb.bets]

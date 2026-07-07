@@ -8,12 +8,12 @@ export class OddsApiService {
   get configured() { return Boolean(process.env.THE_ODDS_API_KEY?.trim()); }
   get region() { return process.env.THE_ODDS_API_REGION?.trim() || 'eu'; }
 
-  private async request(path: string, params: Record<string, string>, ttlMs: number) {
+  private async request(path: string, params: Record<string, string>, ttlMs: number, bypassCache = false) {
     const apiKey = process.env.THE_ODDS_API_KEY?.trim();
     if (!apiKey) throw new Error('The Odds API is not configured. Add THE_ODDS_API_KEY to the server environment.');
     const cacheKey = `${path}?${new URLSearchParams(params)}`;
     const cached = this.cache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) return cached;
+    if (!bypassCache && cached && cached.expiresAt > Date.now()) return cached;
 
     const url = new URL(`${API_HOST}${path}`);
     url.searchParams.set('apiKey', apiKey);
@@ -39,10 +39,10 @@ export class OddsApiService {
     return this.request('/sports/', {}, 15 * 60 * 1000);
   }
 
-  async getOdds(sport: string, eventIds?: string) {
+  async getOdds(sport: string, eventIds?: string, forceRefresh = false) {
     const params: Record<string, string> = { regions: this.region, markets: 'h2h', oddsFormat: 'decimal', dateFormat: 'iso' };
     if (eventIds) params.eventIds = eventIds;
-    return this.request(`/sports/${encodeURIComponent(sport)}/odds/`, params, 45 * 1000);
+    return this.request(`/sports/${encodeURIComponent(sport)}/odds/`, params, 45 * 1000, forceRefresh);
   }
 
   async getScores(sport: string, eventIds?: string) {

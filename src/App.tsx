@@ -47,6 +47,7 @@ import { CoinFlipGameComponent } from './components/CoinFlipGameComponent.tsx';
 import { CrashGameComponent } from './components/CrashGameComponent.tsx';
 import { LuckyWheelComponent } from './components/LuckyWheelComponent.tsx';
 import { SportsbookComponent } from './components/SportsbookComponent.tsx';
+import { SportsBetLogComponent } from './components/SportsBetLogComponent.tsx';
 import JazPayCheckout from './components/JazPayCheckout.tsx';
 import { CustodyDashboard } from './components/CustodyDashboard.tsx';
 import LandingPage from './components/LandingPage.tsx';
@@ -319,7 +320,7 @@ export default function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
   const [user, setUser] = useState<any>(null);
   const [wallet, setWallet] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'game' | 'sports' | 'wallet' | 'referrals' | 'admin' | 'profile' | 'tickets' | 'my-bets'>('game');
+  const [activeTab, setActiveTab] = useState<'game' | 'sports' | 'sports-bets' | 'wallet' | 'referrals' | 'admin' | 'profile' | 'tickets' | 'my-bets'>('game');
   const [myBetsStatusFilter, setMyBetsStatusFilter] = useState<'all' | 'won' | 'lost' | 'pending'>('all');
   const [myBetsSearch, setMyBetsSearch] = useState('');
   
@@ -3238,6 +3239,12 @@ export default function App() {
                     onClick: () => { playClickSound(); setActiveTab('sports'); }
                   },
                   {
+                    id: 'sports-bets',
+                    name: 'My Sports Bets',
+                    icon: <History className="w-4 h-4 text-cyan-400" />,
+                    onClick: () => { playClickSound(); setActiveTab('sports-bets'); }
+                  },
+                  {
                     id: 'my-bets',
                     name: 'My Bets Log',
                     icon: <History className="w-4 h-4 text-emerald-400" />,
@@ -3373,6 +3380,12 @@ export default function App() {
                           name: 'Sports Betting',
                           icon: <Award className="w-4 h-4 text-purple-300" />,
                           onClick: () => { playClickSound(); setActiveTab('sports'); setIsMobileSidebarOpen(false); }
+                        },
+                        {
+                          id: 'sports-bets',
+                          name: 'My Sports Bets',
+                          icon: <History className="w-4 h-4 text-cyan-400" />,
+                          onClick: () => { playClickSound(); setActiveTab('sports-bets'); setIsMobileSidebarOpen(false); }
                         },
                         {
                           id: 'my-bets',
@@ -4074,6 +4087,12 @@ export default function App() {
               {activeTab === 'sports' && (
                 <div className="w-full" id="panel_sports_betting">
                   <SportsbookComponent token={token} refreshWallet={fetchWallet} refreshBets={fetchBets} />
+                </div>
+              )}
+
+              {activeTab === 'sports-bets' && (
+                <div className="w-full" id="panel_sports_bets_log">
+                  <SportsBetLogComponent token={token} />
                 </div>
               )}
 
