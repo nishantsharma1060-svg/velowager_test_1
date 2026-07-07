@@ -46,6 +46,7 @@ import { MinesGameComponent } from './components/MinesGameComponent.tsx';
 import { CoinFlipGameComponent } from './components/CoinFlipGameComponent.tsx';
 import { CrashGameComponent } from './components/CrashGameComponent.tsx';
 import { LuckyWheelComponent } from './components/LuckyWheelComponent.tsx';
+import { SportsbookComponent } from './components/SportsbookComponent.tsx';
 import JazPayCheckout from './components/JazPayCheckout.tsx';
 import { CustodyDashboard } from './components/CustodyDashboard.tsx';
 import LandingPage from './components/LandingPage.tsx';
@@ -318,7 +319,7 @@ export default function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
   const [user, setUser] = useState<any>(null);
   const [wallet, setWallet] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'game' | 'wallet' | 'referrals' | 'admin' | 'profile' | 'tickets' | 'my-bets'>('game');
+  const [activeTab, setActiveTab] = useState<'game' | 'sports' | 'wallet' | 'referrals' | 'admin' | 'profile' | 'tickets' | 'my-bets'>('game');
   const [myBetsStatusFilter, setMyBetsStatusFilter] = useState<'all' | 'won' | 'lost' | 'pending'>('all');
   const [myBetsSearch, setMyBetsSearch] = useState('');
   
@@ -652,6 +653,7 @@ export default function App() {
   // Instant games states
   const [gamesList, setGamesList] = useState<any[]>([]);
   const [selectedGameTab, setSelectedGameTab] = useState<'wingo' | 'mines' | 'crash' | 'flip' | 'wheel'>('wingo');
+  const [showGameLobby, setShowGameLobby] = useState(true);
 
   // Auto-shift to the first enabled game if current tab is disabled
   useEffect(() => {
@@ -3227,7 +3229,13 @@ export default function App() {
                     id: 'game',
                     name: 'Arcade Games',
                     icon: <Gamepad2 className="w-4 h-4" />,
-                    onClick: () => { playClickSound(); setActiveTab('game'); }
+                    onClick: () => { playClickSound(); setActiveTab('game'); setShowGameLobby(true); }
+                  },
+                  {
+                    id: 'sports',
+                    name: 'Sports Betting',
+                    icon: <Award className="w-4 h-4 text-purple-300" />,
+                    onClick: () => { playClickSound(); setActiveTab('sports'); }
                   },
                   {
                     id: 'my-bets',
@@ -3358,7 +3366,13 @@ export default function App() {
                           id: 'game',
                           name: 'Arcade Games',
                           icon: <Gamepad2 className="w-4 h-4" />,
-                          onClick: () => { playClickSound(); setActiveTab('game'); setIsMobileSidebarOpen(false); }
+                          onClick: () => { playClickSound(); setActiveTab('game'); setShowGameLobby(true); setIsMobileSidebarOpen(false); }
+                        },
+                        {
+                          id: 'sports',
+                          name: 'Sports Betting',
+                          icon: <Award className="w-4 h-4 text-purple-300" />,
+                          onClick: () => { playClickSound(); setActiveTab('sports'); setIsMobileSidebarOpen(false); }
                         },
                         {
                           id: 'my-bets',
@@ -3472,8 +3486,47 @@ export default function App() {
                  ======================================================== */}
               {activeTab === 'game' && (
                 <div className="space-y-6 w-full" id="panel_game_wrapper">
+                  {showGameLobby && (
+                    <div className="space-y-6">
+                      <div className="relative overflow-hidden rounded-3xl border border-zinc-800 bg-gradient-to-br from-[#1b1324] via-[#12161b] to-[#101317] p-6 sm:p-8 shadow-2xl">
+                        <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-purple-500/10 blur-3xl" />
+                        <div className="relative">
+                          <span className="text-[10px] font-black uppercase tracking-[0.25em] text-purple-400">VeloWager Pro Arcade</span>
+                          <h2 className="mt-2 text-2xl sm:text-3xl font-black text-white">Choose your game</h2>
+                          <p className="mt-2 max-w-xl text-xs sm:text-sm text-zinc-400">Select a game to start playing and join thousands of active players.</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {[
+                          { id: 'wingo', gameId: 'color-trading', name: 'WinGo Color', icon: '🎨', players: 1284, description: 'Predict colors and numbers in rapid timed draws.', accent: 'from-purple-500/25 to-fuchsia-500/5' },
+                          { id: 'mines', gameId: 'mine', name: 'Mines Arcade', icon: '💣', players: 876, description: 'Reveal safe tiles and cash out before finding a mine.', accent: 'from-emerald-500/20 to-cyan-500/5' },
+                          { id: 'crash', gameId: 'crash', name: 'Crash Multiplier', icon: '🚀', players: 1542, description: 'Cash out while the live multiplier keeps climbing.', accent: 'from-orange-500/20 to-rose-500/5' },
+                          { id: 'flip', gameId: 'flip', name: 'Coin Flip', icon: '🪙', players: 643, description: 'Choose heads or tails for a fast instant result.', accent: 'from-amber-500/20 to-yellow-500/5' },
+                          { id: 'wheel', gameId: 'wheel', name: 'Lucky Spin', icon: '🎡', players: 391, description: 'Spin the daily reward wheel and reveal your prize.', accent: 'from-blue-500/20 to-purple-500/5' }
+                        ].filter(game => {
+                          const status = gamesList.find(item => item.id === game.gameId);
+                          return status ? status.isEnabled : true;
+                        }).map(game => (
+                          <button key={game.id} onClick={() => { playClickSound(); setSelectedGameTab(game.id as any); setShowGameLobby(false); }} className="group overflow-hidden rounded-2xl border border-zinc-800 bg-[#12161b] text-left shadow-xl transition hover:-translate-y-1 hover:border-purple-500/40 hover:shadow-purple-500/10">
+                            <div className={`relative flex h-32 items-center justify-center bg-gradient-to-br ${game.accent}`}>
+                              <span className="text-6xl drop-shadow-2xl transition-transform duration-300 group-hover:scale-110">{game.icon}</span>
+                              <span className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-zinc-950/80 px-2.5 py-1 text-[9px] font-black text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> LIVE</span>
+                            </div>
+                            <div className="p-4">
+                              <div className="flex items-start justify-between gap-3"><div><h3 className="text-sm font-black text-white">{game.name}</h3><p className="mt-1.5 text-[11px] leading-relaxed text-zinc-500">{game.description}</p></div><ChevronRight className="mt-1 h-4 w-4 shrink-0 text-zinc-600 transition group-hover:translate-x-1 group-hover:text-purple-400" /></div>
+                              <div className="mt-4 flex items-center gap-2 border-t border-zinc-900 pt-3 text-[10px] font-bold text-zinc-400"><Users className="h-3.5 w-3.5 text-purple-400" /><span className="font-mono text-white">{game.players.toLocaleString()}</span><span>people playing</span></div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className={showGameLobby ? 'hidden' : 'contents'}>
                   {/* Arcade Game Selector Sub-tabs */}
-                  <div className="bg-[#12161b] border border-zinc-800 rounded-2xl p-2.5 flex flex-col sm:flex-row justify-between items-center gap-3 shadow-2xl">
+                  <div className="flex items-center [&>span]:hidden [&>div]:hidden">
+                    <button onClick={() => { playClickSound(); setShowGameLobby(true); }} className="self-start sm:self-auto flex shrink-0 items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs font-black text-zinc-300 transition hover:border-purple-500/40 hover:text-white">
+                      <ChevronLeft className="w-4 h-4 text-purple-400" /> Back to Games
+                    </button>
                     <span className="text-xs font-black uppercase text-zinc-400 font-sans tracking-widest pl-2">🎮 Choose Arcade Game:</span>
                     <div className="flex gap-2 overflow-x-auto scrollbar-none w-full sm:w-auto">
                       {[
@@ -4014,8 +4067,15 @@ export default function App() {
                   </div>
                 );
               })()}
+                  </div>
             </div>
           )}
+
+              {activeTab === 'sports' && (
+                <div className="w-full" id="panel_sports_betting">
+                  <SportsbookComponent token={token} refreshWallet={fetchWallet} refreshBets={fetchBets} />
+                </div>
+              )}
 
               {/* ========================================================
                   TAB 2: WALLET DEPOSIT & WITHDRAW MANAGEMENT
@@ -6509,6 +6569,7 @@ export default function App() {
                           { id: 'mine', label: '💣 Mines Arcade' },
                           { id: 'crash', label: '🚀 Crash Multiplier' },
                           { id: 'flip', label: '🪙 Lucky Coin Flip' }
+                          ,{ id: 'sports', label: '🏆 Live Sportsbook' }
                         ].map((g) => {
                           const dbGame = gamesList.find(x => x.id === g.id);
                           const isEnabled = dbGame ? dbGame.isEnabled : true;

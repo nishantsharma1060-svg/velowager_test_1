@@ -73,6 +73,10 @@ async function startServer() {
 
   // Register all modular REST API controller endpoints
   app.use('/api', apiRouter);
+  // API requests should never fall through to the SPA's index.html response.
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'API route not found. Restart the server if this route was added recently.' });
+  });
 
   // Initialize and run the Game Engine's master clock loop
   gameEngine.startClock();

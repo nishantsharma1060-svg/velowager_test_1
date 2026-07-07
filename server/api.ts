@@ -13,6 +13,7 @@ import { cryptoService } from './services/CryptoService.js';
 import { TwoFactorService } from './services/TwoFactorService.js';
 import { emailService } from './services/EmailService.js';
 import { hashPassword } from './security/password.js';
+import { oddsApiService } from './services/OddsApiService.js';
 
 const router = Router();
 
@@ -68,6 +69,8 @@ const activeCrashGames = new Map<string, {
   roundId: string;
   betId: string;
 }>();
+
+const sportsBetPayoutLocks = new Set<string>();
 
 async function settleExpiredCrashSession(userId: string): Promise<boolean> {
   const active = activeCrashGames.get(userId);
@@ -1657,6 +1660,124 @@ router.get('/games', async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Live sportsbook feed. Provider credentials remain server-side.
+router.get('/sports/catalog', async (_req, res) => {
+  try {
+    const result = await oddsApiService.getSports();
+    const sports = (result.value || []).filter((sport: any) => sport.active && !sport.has_outrights);
+    res.json({ configured: true, sports, quota: result.quota });
+  } catch (err: any) {
+    res.status(oddsApiService.configured ? 502 : 503).json({ configured: oddsApiService.configured, error: err.message });
+  }
+});
+
+router.get('/sports/odds', async (req, res) => {
+  const sport = String(req.query.sport || 'upcoming');
+  if (!/^[a-z0-9_]+$/i.test(sport)) { res.status(400).json({ error: 'Invalid sport key.' }); return; }
+  try {
+    const result = await oddsApiService.getOdds(sport);
+    res.json({ events: result.value || [], region: oddsApiService.region, quota: result.quota });
+  } catch (err: any) {
+    res.status(oddsApiService.configured ? 502 : 503).json({ error: err.message });
+  }
+});
+
+router.post('/sports/bet', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  const { sportKey, eventId, bookmakerKey, outcomeName } = req.body;
+  const amount = Number(req.body.amount);
+  if (![sportKey, eventId, bookmakerKey, outcomeName].every(value => typeof value === 'string' && value.length > 0)) { res.status(400).json({ error: 'Event, bookmaker, and selection are required.' }); return; }
+  if (!Number.isFinite(amount) || amount < 10 || amount > 50000) { res.status(400).json({ error: 'Stake must be between ₹10 and ₹50,000.' }); return; }
+  try {
+    const game = await gameRepo.getGameById('sports');
+    if (!game?.isEnabled) { res.status(400).json({ error: 'Sports betting is currently unavailable.' }); return; }
+    const fresh = await oddsApiService.getOdds(sportKey, eventId);
+    const event = (fresh.value || []).find((item: any) => item.id === eventId);
+    if (!event) { res.status(409).json({ error: 'This event is no longer offered.' }); return; }
+    const bookmaker = event.bookmakers?.find((item: any) => item.key === bookmakerKey);
+    const market = bookmaker?.markets?.find((item: any) => item.key === 'h2h');
+    const outcome = market?.outcomes?.find((item: any) => item.name === outcomeName);
+    const price = Number(outcome?.price);
+    if (!Number.isFinite(price) || price <= 1) { res.status(409).json({ error: 'These odds are no longer available. Refresh and choose again.' }); return; }
+
+    const wallet = await walletService.getBalance(req.user.id);
+    if (wallet.balance + wallet.promoBalance < amount) { res.status(400).json({ error: 'Insufficient wallet balance.' }); return; }
+    await walletService.deductBet(req.user.id, 'sports', amount, `${event.home_team} vs ${event.away_team}: ${outcomeName} @ ${price}`);
+    const round = await gameRepo.createRound({ gameId: 'sports', gameMode: sportKey, periodNumber: event.id, status: 'closed', resultStrategy: 'fair' });
+    const bet = await gameRepo.createBet({ roundId: round.id, userId: req.user.id, gameId: 'sports', gameMode: sportKey, periodNumber: event.id, betType: 'color', betValue: `${outcomeName} @ ${price} · ${bookmaker.title} · ${event.home_team} vs ${event.away_team}`, amount });
+    res.status(201).json({ message: `Bet accepted at ${price.toFixed(2)} odds.`, bet, acceptedOdds: price });
+  } catch (err: any) { res.status(400).json({ error: err.message }); }
+});
+
+router.post('/sports/cashout', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  const betId = String(req.body.betId || '');
+  if (!betId) { res.status(400).json({ error: 'Bet ID is required.' }); return; }
+  if (sportsBetPayoutLocks.has(betId)) { res.status(409).json({ error: 'This cash-out is already being processed.' }); return; }
+  sportsBetPayoutLocks.add(betId);
+  try {
+    const bet = (await gameRepo.getBetsByUserId(req.user.id, 100)).find(item => item.id === betId && item.gameId === 'sports');
+    if (!bet) { res.status(404).json({ error: 'Sports bet not found.' }); return; }
+    if (bet.status !== 'pending') { res.status(409).json({ error: 'Only pending sports bets can be cashed out.' }); return; }
+
+    const latest = await oddsApiService.getOdds(bet.gameMode, bet.periodNumber);
+    const event = (latest.value || []).find((item: any) => item.id === bet.periodNumber);
+    if (!event) { res.status(409).json({ error: 'Cash-out is unavailable because this market is suspended or completed.' }); return; }
+    const selection = bet.betValue.split(' @ ')[0];
+    const currentPrices = (event.bookmakers || []).flatMap((bookmaker: any) =>
+      (bookmaker.markets || []).filter((market: any) => market.key === 'h2h').flatMap((market: any) =>
+        (market.outcomes || []).filter((outcome: any) => outcome.name === selection).map((outcome: any) => Number(outcome.price))
+      )
+    ).filter((price: number) => Number.isFinite(price) && price > 1);
+    if (!currentPrices.length) { res.status(409).json({ error: 'The selected outcome is currently suspended.' }); return; }
+
+    const currentOdds = Math.max(...currentPrices);
+    const cashoutAmount = Number((bet.amount * currentOdds * 0.8).toFixed(2));
+    await walletService.creditWinnings(req.user.id, 'sports', cashoutAmount, `Early cash-out: ${selection} at ${currentOdds.toFixed(2)} odds (80% offer)`);
+    await gameRepo.updateBetSettlement(bet.id, 'won', cashoutAmount, 0);
+    await gameRepo.updateRound(bet.roundId, { status: 'settled', resultColor: 'cashout', totalWinAmount: cashoutAmount, settledAt: new Date().toISOString() });
+    res.json({ message: `Cashed out ₹${cashoutAmount.toFixed(2)} at current odds of ${currentOdds.toFixed(2)}.`, cashoutAmount, currentOdds });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  } finally {
+    sportsBetPayoutLocks.delete(betId);
+  }
+});
+
+router.post('/sports/settle', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const pending = (await gameRepo.getBetsByUserId(req.user.id, 50)).filter(bet => bet.gameId === 'sports' && bet.status === 'pending');
+    let settled = 0;
+    for (const bet of pending) {
+      if (sportsBetPayoutLocks.has(bet.id)) continue;
+      sportsBetPayoutLocks.add(bet.id);
+      try {
+        const scores = await oddsApiService.getScores(bet.gameMode, bet.periodNumber);
+        const event = (scores.value || []).find((item: any) => item.id === bet.periodNumber && item.completed && Array.isArray(item.scores));
+        if (!event) continue;
+        const ordered = [...event.scores].sort((a: any, b: any) => Number(b.score) - Number(a.score));
+        const isDraw = ordered.length > 1 && Number(ordered[0].score) === Number(ordered[1].score);
+        const winner = isDraw ? 'Draw' : ordered[0]?.name;
+        const selection = bet.betValue.split(' @ ')[0];
+        const odds = Number(bet.betValue.split(' @ ')[1]?.split(' ')[0]);
+        if (!Number.isFinite(odds) || odds <= 1) continue;
+        const won = selection.toLowerCase() === String(winner).toLowerCase();
+        let winnings = 0; let fee = 0;
+        if (won) {
+          const gross = Number((bet.amount * odds).toFixed(2));
+          fee = Number((gross * (db.settings.winningFeePercent || 2) / 100).toFixed(2));
+          winnings = gross - fee;
+          await walletService.creditWinnings(req.user.id, 'sports', winnings, `${selection} won @ ${odds}`);
+        }
+        await gameRepo.updateBetSettlement(bet.id, won ? 'won' : 'lost', winnings, fee);
+        await gameRepo.updateRound(bet.roundId, { status: 'settled', resultColor: winner, totalWinAmount: winnings, settledAt: new Date().toISOString() });
+        settled++;
+      } finally {
+        sportsBetPayoutLocks.delete(bet.id);
+      }
+    }
+    res.json({ settled, pending: pending.length - settled });
+  } catch (err: any) { res.status(400).json({ error: err.message }); }
 });
 
 // Admin toggle game endpoint

@@ -337,6 +337,14 @@ class PostgresDatabase {
           isEnabled: true,
           minBet: 10,
           maxBet: 50000
+        },
+        {
+          id: 'sports',
+          name: 'Live Sportsbook',
+          description: 'Real upcoming and live sports markets powered by The Odds API.',
+          isEnabled: true,
+          minBet: 10,
+          maxBet: 50000
         }
       ];
 

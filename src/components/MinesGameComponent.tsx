@@ -1,368 +1,78 @@
 import React, { useState } from 'react';
-import { ShieldAlert, Bomb, Sparkles, AlertCircle, TrendingUp, DollarSign } from 'lucide-react';
+import { AlertCircle, Bomb, Sparkles } from 'lucide-react';
 
-interface MinesGameProps {
-  token: string | null;
-  refreshWallet: () => void;
-}
+interface Props { token: string | null; refreshWallet: () => void }
 
-export const MinesGameComponent: React.FC<MinesGameProps> = ({ token, refreshWallet }) => {
-  const [betAmount, setBetAmount] = useState<number>(100);
-  const [minesCount, setMinesCount] = useState<number>(3);
-  const [gameActive, setGameActive] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(false);
-  
-  // Game session states
-  const [revealedPositions, setRevealedPositions] = useState<number[]>([]);
-  const [explodedPosition, setExplodedPosition] = useState<number | null>(null);
+export const MinesGameComponent: React.FC<Props> = ({ token, refreshWallet }) => {
+  const [betAmount, setBetAmount] = useState(100);
+  const [minesCount, setMinesCount] = useState(3);
+  const [gameActive, setGameActive] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [revealed, setRevealed] = useState<number[]>([]);
+  const [exploded, setExploded] = useState<number | null>(null);
   const [minePositions, setMinePositions] = useState<number[]>([]);
-  const [currentMultiplier, setCurrentMultiplier] = useState<number>(1.0);
+  const [multiplier, setMultiplier] = useState(1);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
 
-  const triggerClickSound = () => {
+  const tone = (frequency: number, duration = .1) => { try { const ctx = new (window.AudioContext || (window as any).webkitAudioContext)(); const oscillator = ctx.createOscillator(); const gain = ctx.createGain(); oscillator.connect(gain); gain.connect(ctx.destination); oscillator.frequency.value = frequency; gain.gain.value = .06; oscillator.start(); oscillator.stop(ctx.currentTime + duration); } catch {} };
+
+  const start = async () => {
+    if (!token || betAmount < 10) { setFeedback({ type: 'error', msg: token ? 'Minimum bet is ₹10.' : 'Please log in to play.' }); return; }
+    setLoading(true); setFeedback(null); setRevealed([]); setExploded(null); setMinePositions([]); setMultiplier(1);
     try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(600, audioCtx.currentTime);
-      gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.08);
-    } catch {}
+      const response = await fetch('/api/game/mines/start', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ betAmount, minesCount }) });
+      const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Failed to start game');
+      setGameActive(true); tone(600); refreshWallet();
+    } catch (error: any) { setFeedback({ type: 'error', msg: error.message }); }
+    finally { setLoading(false); }
   };
 
-  const triggerGemSound = (multiplier: number) => {
+  const reveal = async (position: number) => {
+    if (!gameActive || loading || revealed.includes(position)) return;
+    setLoading(true); setFeedback(null);
     try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.type = 'sine';
-      // Pitch increases with multiplier
-      osc.frequency.setValueAtTime(440 + multiplier * 80, audioCtx.currentTime);
-      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.15);
-    } catch {}
+      const response = await fetch('/api/game/mines/reveal', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ position }) });
+      const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Action failed');
+      setRevealed(data.revealedPositions || []);
+      if (data.exploded) { setExploded(position); setMinePositions(data.minePositions || []); setGameActive(false); tone(90, .35); setFeedback({ type: 'error', msg: data.message || 'Boom! You hit a mine.' }); refreshWallet(); }
+      else { setMultiplier(data.currentMultiplier || 1); tone(520 + (data.currentMultiplier || 1) * 60); if (data.isCleared) { setMinePositions(data.minePositions || []); setGameActive(false); setFeedback({ type: 'success', msg: data.message || 'Board cleared!' }); refreshWallet(); } }
+    } catch (error: any) { setFeedback({ type: 'error', msg: error.message }); }
+    finally { setLoading(false); }
   };
 
-  const triggerExplodeSound = () => {
+  const cashout = async () => {
+    if (!gameActive || !revealed.length) return;
+    setLoading(true); setFeedback(null);
     try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(100, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + 0.4);
-      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.4);
-    } catch {}
+      const response = await fetch('/api/game/mines/cashout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Cashout failed');
+      setGameActive(false); setMinePositions(data.minePositions || []); tone(780, .25); setFeedback({ type: 'success', msg: `Cashed out ₹${data.winAmount} at ${data.multiplier}×` }); refreshWallet();
+    } catch (error: any) { setFeedback({ type: 'error', msg: error.message }); }
+    finally { setLoading(false); }
   };
 
-  const triggerCashoutSound = () => {
-    try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
-      osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); // E5
-      osc.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.2); // G5
-      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.35);
-    } catch {}
-  };
+  const randomPick = () => { const choices = Array.from({ length: 25 }, (_, index) => index).filter(index => !revealed.includes(index)); if (choices.length) reveal(choices[Math.floor(Math.random() * choices.length)]); };
+  const profit = gameActive ? betAmount * multiplier - betAmount : 0;
 
-  const handleStartGame = async () => {
-    if (!token) {
-      setFeedback({ type: 'error', msg: 'Please log in to play.' });
-      return;
-    }
-    if (betAmount <= 0 || isNaN(betAmount)) {
-      setFeedback({ type: 'error', msg: 'Please enter a valid bet amount.' });
-      return;
-    }
-
-    setLoading(true);
-    setFeedback(null);
-    setRevealedPositions([]);
-    setExplodedPosition(null);
-    setMinePositions([]);
-    setCurrentMultiplier(1.0);
-
-    try {
-      const r = await fetch('/api/game/mines/start', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ betAmount, minesCount })
-      });
-      const d = await r.json();
-
-      if (!r.ok) {
-        throw new Error(d.error || 'Failed to start game');
-      }
-
-      setGameActive(true);
-      triggerClickSound();
-      refreshWallet();
-    } catch (e: any) {
-      setFeedback({ type: 'error', msg: e.message });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleReveal = async (position: number) => {
-    if (!gameActive || loading || revealedPositions.includes(position)) return;
-
-    setLoading(true);
-    setFeedback(null);
-
-    try {
-      const r = await fetch('/api/game/mines/reveal', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ position })
-      });
-      const d = await r.json();
-
-      if (!r.ok) {
-        throw new Error(d.error || 'Action failed');
-      }
-
-      if (d.exploded) {
-        setExplodedPosition(position);
-        setMinePositions(d.minePositions || []);
-        setRevealedPositions(d.revealedPositions || []);
-        setGameActive(false);
-        triggerExplodeSound();
-        setFeedback({ type: 'error', msg: d.message || 'Boom! You hit a mine!' });
-        refreshWallet();
-      } else {
-        setRevealedPositions(d.revealedPositions || []);
-        setCurrentMultiplier(d.currentMultiplier || 1.0);
-        triggerGemSound(d.currentMultiplier || 1.1);
-
-        if (d.isCleared) {
-          setMinePositions(d.minePositions || []);
-          setGameActive(false);
-          triggerCashoutSound();
-          setFeedback({ type: 'success', msg: d.message || 'Perfect clear! You cleared all safe gems!' });
-          refreshWallet();
-        }
-      }
-    } catch (e: any) {
-      setFeedback({ type: 'error', msg: e.message });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCashout = async () => {
-    if (!gameActive || revealedPositions.length === 0) return;
-
-    setLoading(true);
-    setFeedback(null);
-
-    try {
-      const r = await fetch('/api/game/mines/cashout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      const d = await r.json();
-
-      if (!r.ok) {
-        throw new Error(d.error || 'Cashout failed');
-      }
-
-      setGameActive(false);
-      setMinePositions(d.minePositions || []);
-      triggerCashoutSound();
-      setFeedback({
-        type: 'success',
-        msg: `Successfully cashed out ₹${d.winAmount}! (Multiplier: ${d.multiplier}x)`
-      });
-      refreshWallet();
-    } catch (e: any) {
-      setFeedback({ type: 'error', msg: e.message });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Helper to check if a tile is a known mine
-  const isMineTile = (idx: number) => {
-    return minePositions.includes(idx);
-  };
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" id="mines_arcade_section">
-      {/* Configuration Column */}
-      <div className="bg-[#12161b] border border-zinc-800 rounded-3xl p-6 shadow-2xl flex flex-col gap-5">
-        <div className="flex items-center gap-2 pb-3 border-b border-zinc-800">
-          <Bomb className="w-5 h-5 text-rose-500" />
-          <div>
-            <h2 className="text-sm font-black text-white uppercase tracking-wider">Mines Arcade</h2>
-            <span className="text-[10px] text-zinc-500 font-mono block">Avoid Mines & Cashout Safely</span>
-          </div>
-        </div>
-
-        {/* Bet amount */}
-        <div>
-          <label className="text-[10px] font-black uppercase text-zinc-400 tracking-wider mb-2 block">Bet Amount (₹)</label>
-          <div className="relative">
-            <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
-            <input
-              type="number"
-              disabled={gameActive}
-              value={betAmount}
-              onChange={(e) => setBetAmount(Math.max(10, parseInt(e.target.value) || 0))}
-              className="w-full bg-zinc-950 border border-zinc-850 rounded-xl py-2 pl-9 pr-4 text-sm font-bold font-mono text-white focus:outline-none focus:border-rose-500/50 transition"
-              placeholder="Bet amount..."
-            />
-          </div>
-          <div className="flex gap-1.5 mt-2">
-            {[100, 500, 1000, 5000].map((val) => (
-              <button
-                key={val}
-                type="button"
-                disabled={gameActive}
-                onClick={() => setBetAmount(val)}
-                className="flex-1 bg-zinc-900 border border-zinc-850 hover:border-zinc-700 text-zinc-400 py-1.5 rounded-lg text-xs font-bold transition font-mono"
-              >
-                ₹{val}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Mines count selection */}
-        <div>
-          <label className="text-[10px] font-black uppercase text-zinc-400 tracking-wider mb-2 block">Mines Count (1 - 24)</label>
-          <select
-            disabled={gameActive}
-            value={minesCount}
-            onChange={(e) => setMinesCount(parseInt(e.target.value))}
-            className="w-full bg-zinc-950 border border-zinc-850 rounded-xl py-2.5 px-4 text-sm font-bold text-white focus:outline-none focus:border-rose-500/50 transition font-mono"
-          >
-            {Array.from({ length: 24 }, (_, i) => i + 1).map((num) => (
-              <option key={num} value={num}>
-                {num} {num === 1 ? 'Mine' : 'Mines'}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Game Stats (Multiplier) */}
-        <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex justify-between items-center">
-          <div>
-            <span className="text-[9px] font-black uppercase text-zinc-500 block">Current Multiplier</span>
-            <span className="text-xl font-black text-amber-400 font-mono mt-0.5 block flex items-center gap-1">
-              <TrendingUp className="w-4 h-4 text-amber-400" />
-              {currentMultiplier.toFixed(2)}x
-            </span>
-          </div>
-          <div className="text-right">
-            <span className="text-[9px] font-black uppercase text-zinc-500 block">Next Multiplier</span>
-            <span className="text-xs font-bold text-zinc-400 font-mono mt-1 block">
-              {/* Formula for next multiplier */}
-              {gameActive ? (currentMultiplier * (25 - revealedPositions.length) / (25 - revealedPositions.length - minesCount) * 0.95).toFixed(2) : '1.00'}x
-            </span>
-          </div>
-        </div>
-
-        {/* Action Button */}
-        {!gameActive ? (
-          <button
-            onClick={handleStartGame}
-            disabled={loading}
-            className="w-full bg-rose-500 hover:bg-rose-400 text-white font-black uppercase py-3 rounded-xl text-xs tracking-wider transition active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 shadow-lg shadow-rose-500/20"
-          >
-            <Bomb className="w-4 h-4" />
-            Start Mines Game
-          </button>
-        ) : (
-          <button
-            onClick={handleCashout}
-            disabled={loading || revealedPositions.length === 0}
-            className="w-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black uppercase py-3 rounded-xl text-xs tracking-wider transition active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
-          >
-            <Sparkles className="w-4 h-4" />
-            Cash Out (₹{(betAmount * currentMultiplier).toFixed(2)})
-          </button>
-        )}
-
-        {/* Notifications and Alerts */}
-        {feedback && (
-          <div className={`p-4 rounded-xl flex items-start gap-2.5 text-xs border ${
-            feedback.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
-          }`}>
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{feedback.msg}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Grid Column */}
-      <div className="lg:col-span-2 bg-[#12161b] border border-zinc-800 rounded-3xl p-6 shadow-2xl flex items-center justify-center min-h-[400px]">
-        <div className="grid grid-cols-5 gap-3 max-w-[360px] w-full aspect-square" id="mines_grid_arcade">
-          {Array.from({ length: 25 }).map((_, idx) => {
-            const isRevealed = revealedPositions.includes(idx);
-            const isMine = isMineTile(idx);
-            const isBlown = explodedPosition === idx;
-
-            let tileStyle = "bg-zinc-900 border-zinc-800 text-zinc-600 hover:bg-zinc-850 hover:border-zinc-700 hover:-translate-y-0.5 shadow-md";
-            let content = <span className="text-[10px] font-mono font-black text-zinc-700">{idx + 1}</span>;
-
-            if (isRevealed) {
-              tileStyle = "bg-amber-500 border-amber-400 text-zinc-950 scale-95 shadow-inner ring-4 ring-amber-500/10";
-              content = <Sparkles className="w-6 h-6 text-zinc-950 animate-pulse" />;
-            } else if (isBlown) {
-              tileStyle = "bg-rose-600 border-rose-500 text-white scale-95 animate-bounce ring-4 ring-rose-500/20";
-              content = <Bomb className="w-6 h-6 text-white animate-spin" />;
-            } else if (isMine && !gameActive) {
-              // Mine revealed after cashout/loss
-              tileStyle = "bg-rose-950 border-rose-900 text-rose-500 scale-90";
-              content = <Bomb className="w-5 h-5" />;
-            } else if (!gameActive && revealedPositions.length > 0) {
-              // Safe tile revealed after cashout
-              tileStyle = "bg-emerald-950 border-emerald-900 text-emerald-500 scale-90";
-              content = <Sparkles className="w-5 h-5" />;
-            }
-
-            return (
-              <button
-                key={idx}
-                type="button"
-                disabled={!gameActive || isRevealed}
-                onClick={() => handleReveal(idx)}
-                className={`w-full aspect-square rounded-2xl border flex items-center justify-center font-bold text-lg transition duration-200 select-none ${tileStyle}`}
-              >
-                {content}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+  return <div className="overflow-hidden rounded-2xl border border-[#294959] bg-[#0d2430] shadow-2xl lg:grid lg:grid-cols-[375px_minmax(0,1fr)]" id="mines_arcade_section">
+    <div className="flex flex-col gap-5 border-b border-[#294959] bg-[#1d3b48] p-4 sm:p-5 lg:min-h-[650px] lg:border-b-0 lg:border-r">
+      <div className="grid grid-cols-2 rounded-full bg-[#102934] p-2 text-sm font-black text-white"><button className="rounded-full bg-[#42677b] py-3">Manual</button><button className="py-3 text-zinc-300">Auto</button></div>
+      <div><div className="mb-2 flex justify-between text-xs font-bold text-[#8fd0f5]"><label>Bet Amount</label><span>₹{betAmount.toFixed(2)}</span></div><div className="flex overflow-hidden rounded-xl border border-[#386071] bg-[#102934]"><div className="flex min-w-0 flex-1 items-center gap-2 px-4"><span className="text-[#8fd0f5]">₹</span><input type="number" disabled={gameActive} value={betAmount} onChange={event => setBetAmount(Math.max(10, Number(event.target.value) || 0))} className="min-w-0 flex-1 bg-transparent py-3 text-base font-bold text-white outline-none" /></div><button disabled={gameActive} onClick={() => setBetAmount(Math.max(10, betAmount / 2))} className="border-l border-[#507488] bg-[#42677b] px-4 font-black text-white">½</button><button disabled={gameActive} onClick={() => setBetAmount(betAmount * 2)} className="border-l border-[#507488] bg-[#42677b] px-4 font-black text-white">2×</button></div></div>
+      <div><label className="mb-2 block text-xs font-bold text-[#8fd0f5]">Mines</label><select disabled={gameActive} value={minesCount} onChange={event => setMinesCount(Number(event.target.value))} className="w-full rounded-xl border border-[#386071] bg-[#102934] px-3 py-3 text-base font-bold text-white outline-none">{Array.from({ length: 24 }, (_, index) => index + 1).map(number => <option key={number}>{number}</option>)}</select></div>
+      <div><label className="mb-2 block text-xs font-bold text-[#8fd0f5]">Gems</label><div className="rounded-xl border border-[#386071] bg-[#214451] px-3 py-3 text-base font-bold text-white">{25 - minesCount}</div></div>
+      {!gameActive ? <button onClick={start} disabled={loading} className="rounded-xl bg-[#1f7de2] py-4 text-sm font-black text-white transition hover:bg-blue-500 disabled:opacity-50">{loading ? 'Starting…' : 'Bet'}</button> : <button onClick={cashout} disabled={loading || !revealed.length} className="rounded-xl bg-emerald-500 py-4 text-sm font-black text-[#09212b] hover:bg-emerald-400 disabled:opacity-50">Cash Out ₹{(betAmount * multiplier).toFixed(2)}</button>}
+      <button disabled={!gameActive || loading} onClick={randomPick} className="rounded-xl bg-[#2e5365] py-4 text-sm font-black text-[#91a8b4] enabled:hover:bg-[#3a6578] enabled:hover:text-white disabled:opacity-60">Random Pick</button>
+      <div><div className="mb-2 flex justify-between text-xs font-bold text-[#8fd0f5]"><span>Total Profit ({multiplier.toFixed(2)}×)</span><span>₹{profit.toFixed(2)}</span></div><div className="rounded-xl border border-[#386071] bg-[#214451] px-4 py-3 text-base font-bold text-white">₹ {profit.toFixed(2)}</div></div>
+      {feedback && <div className={`flex items-start gap-2 rounded-xl border p-3 text-xs ${feedback.type === 'success' ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-rose-400/30 bg-rose-500/10 text-rose-300'}`}><AlertCircle className="h-4 w-4 shrink-0" />{feedback.msg}</div>}
     </div>
-  );
+    <div className="flex min-h-[500px] items-center justify-center bg-[#0c2230] p-5 sm:p-8"><div className="grid w-full max-w-[790px] grid-cols-5 gap-2.5 sm:gap-3" id="mines_grid_arcade">{Array.from({ length: 25 }, (_, index) => {
+      const isRevealed = revealed.includes(index); const isMine = minePositions.includes(index); const isBlown = exploded === index;
+      let style = 'bg-[#304d5d] border-[#365767] hover:bg-[#3b6072] hover:-translate-y-1 shadow-[0_7px_0_#1b3542]'; let content: React.ReactNode = null;
+      if (isRevealed) { style = 'bg-cyan-400 border-cyan-300 text-[#09212b] translate-y-1 shadow-[0_3px_0_#08799a]'; content = <Sparkles className="h-7 w-7" />; }
+      else if (isBlown) { style = 'bg-rose-600 border-rose-400 text-white translate-y-1 shadow-[0_3px_0_#7f1d1d]'; content = <Bomb className="h-7 w-7" />; }
+      else if (isMine && !gameActive) { style = 'bg-rose-950 border-rose-700 text-rose-400 opacity-80'; content = <Bomb className="h-6 w-6" />; }
+      else if (!gameActive && revealed.length) { style = 'bg-emerald-950 border-emerald-700 text-emerald-400 opacity-80'; content = <Sparkles className="h-6 w-6" />; }
+      return <button key={index} disabled={!gameActive || isRevealed} onClick={() => reveal(index)} className={`flex aspect-[.95] w-full select-none items-center justify-center rounded-xl border transition duration-200 ${style}`}>{content}</button>;
+    })}</div></div>
+  </div>;
 };
