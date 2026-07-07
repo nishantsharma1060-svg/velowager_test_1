@@ -48,6 +48,7 @@ import { CrashGameComponent } from './components/CrashGameComponent.tsx';
 import { LuckyWheelComponent } from './components/LuckyWheelComponent.tsx';
 import JazPayCheckout from './components/JazPayCheckout.tsx';
 import { CustodyDashboard } from './components/CustodyDashboard.tsx';
+import LandingPage from './components/LandingPage.tsx';
 
 import { motion, AnimatePresence, type Variants } from 'motion/react';
 
@@ -439,6 +440,12 @@ export default function App() {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isVipModalOpen, setIsVipModalOpen] = useState(false);
+
+  useEffect(() => {
+    const onLandingAuth = (event: Event) => setAuthMode((event as CustomEvent<'login' | 'register'>).detail);
+    window.addEventListener('landing-auth-mode', onLandingAuth);
+    return () => window.removeEventListener('landing-auth-mode', onLandingAuth);
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -2967,7 +2974,9 @@ export default function App() {
 
         {/* IF NOT LOGGED IN SHOW AUTH PORTAL */}
         {!token ? (
-          <div className="max-w-md w-full mx-auto my-12 bg-[#12161b] border border-zinc-800 rounded-2xl shadow-2xl p-6 sm:p-8" id="auth_portal">
+          <>
+          <LandingPage />
+          <div className="max-w-md w-full mx-auto my-20 bg-[#12161b] border border-zinc-800 rounded-2xl shadow-2xl p-6 sm:p-8 scroll-mt-24" id="auth_portal">
             <div className="text-center mb-6">
               <h2 className="text-2xl font-black text-white tracking-tight">Onboarding Gateway</h2>
               <p className="text-xs text-zinc-400 mt-1">Access the premium VeloWager online Color Trading & Bet platform</p>
@@ -3187,6 +3196,7 @@ export default function App() {
 
             </form>
           </div>
+          </>
         ) : (
           /* OTHERWISE FULLY LOGGED IN APPLICATION FLOW */
           <div className="flex w-full gap-6 items-start" id="logged_in_container">

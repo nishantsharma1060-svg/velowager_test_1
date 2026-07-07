@@ -322,7 +322,7 @@ export const LuckyWheelComponent: React.FC<LuckyWheelComponentProps> = ({ token,
                           fontWeight="900"
                           textAnchor="middle"
                           alignmentBaseline="middle"
-                          fontFamily="sans-serif"
+                          fontFamily="Segoe UI Variable, Segoe UI, sans-serif"
                           className="select-none tracking-wider text-shadow-sm"
                         >
                           {prize.label}
