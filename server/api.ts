@@ -170,6 +170,12 @@ router.post('/auth/request-otp', async (req, res) => {
   }
 });
 
+// Resolve the client address through Express' configured trusted proxy chain.
+const getSignupIp = (req: any): string => {
+  const rawIp = String(req.ip || req.socket?.remoteAddress || 'unknown').trim();
+  return rawIp.startsWith('::ffff:') ? rawIp.slice(7) : rawIp;
+};
+
 // User registration
 router.post('/auth/register', async (req, res) => {
   const { password, otp, referredByCode, username, email } = req.body;
@@ -186,7 +192,7 @@ router.post('/auth/register', async (req, res) => {
   }
 
   try {
-    const signupIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    const signupIp = getSignupIp(req);
     
     // Generate unique mobile number to satisfy DB constraints
     let generatedMobile = '';
@@ -381,7 +387,7 @@ router.get(['/auth/google/callback', '/auth/google/callback/'], async (req, res)
       const referralCode = 'REF' + Math.random().toString(36).substr(2, 6).toUpperCase();
       const randomPass = crypto.randomBytes(16).toString('hex');
       const passwordHash = hashPassword(randomPass);
-      const signupIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+      const signupIp = getSignupIp(req);
 
       user = await userRepo.create({
         id: `google-${profile.id}`,
@@ -2663,12 +2669,17 @@ router.get('/admin/gateway-orders', authenticateToken, requireAdmin, async (req:
 // Fetch all registered users
 router.get('/admin/users', authenticateToken, requireAdmin, async (req: AuthenticatedRequest, res) => {
   const users = await userRepo.getAllUsers();
+  const ipAccountCounts = users.reduce<Record<string, number>>((counts, user) => {
+    if (user.signupIp) counts[user.signupIp] = (counts[user.signupIp] || 0) + 1;
+    return counts;
+  }, {});
   // Map with wallet info
   const usersWithWallet = await Promise.all(users.map(async (u) => {
     const wallet = await walletService.getBalance(u.id);
     const { passwordHash, twoFactorSecret, ...safeUser } = u;
     return {
       ...safeUser,
+      sameIpAccountCount: u.signupIp ? ipAccountCounts[u.signupIp] : 0,
       wallet
     };
   }));

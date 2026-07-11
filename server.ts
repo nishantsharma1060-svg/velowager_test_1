@@ -21,6 +21,7 @@ async function ensureRuntimeSchema() {
   // migration command. Keep additive compatibility changes idempotent.
   await schemaDb.execute(sql.raw('ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_role text'));
   await schemaDb.execute(sql.raw("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_permissions jsonb DEFAULT '[]'::jsonb NOT NULL"));
+  await schemaDb.execute(sql.raw('ALTER TABLE users ADD COLUMN IF NOT EXISTS signup_ip text'));
   await schemaDb.execute(sql.raw('ALTER TABLE platform_settings ADD COLUMN IF NOT EXISTS google_oauth_enabled boolean DEFAULT true NOT NULL'));
   await schemaDb.execute(sql.raw("ALTER TABLE platform_settings ADD COLUMN IF NOT EXISTS telegram_url text DEFAULT '' NOT NULL"));
   await schemaDb.execute(sql.raw('ALTER TABLE referral_commissions ALTER COLUMN bet_id DROP NOT NULL'));

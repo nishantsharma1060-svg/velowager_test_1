@@ -8,6 +8,7 @@ interface CrashGameProps {
 
 export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWallet }) => {
   const [betAmount, setBetAmount] = useState<number>(100);
+  const [autoCashout, setAutoCashout] = useState<number>(1.5);
   const [gameActive, setGameActive] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -22,6 +23,10 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
   const requestRef = useRef<number | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const crashPointRef = useRef<number | null>(null);
+  const autoCashoutRef = useRef<number>(1.5);
+  const gameActiveRef = useRef(false);
+  const cashoutTriggeredRef = useRef(false);
+  const cashoutHandlerRef = useRef<(automatic?: boolean) => void>(() => undefined);
 
   const triggerLaunchSound = () => {
     try {
@@ -84,6 +89,7 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
       // Rocket exploded!
       setMultiplier(crashPointRef.current);
       setGameActive(false);
+      gameActiveRef.current = false;
       setCrashed(true);
       setCrashPoint(crashPointRef.current);
       requestRef.current = null;
@@ -98,6 +104,11 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
         msg: `💥 Boom! The rocket exploded at ${crashPointRef.current.toFixed(2)}x`
       });
       refreshWallet();
+    } else if (currentMult >= autoCashoutRef.current && !cashoutTriggeredRef.current) {
+      cashoutTriggeredRef.current = true;
+      setMultiplier(autoCashoutRef.current);
+      requestRef.current = null;
+      cashoutHandlerRef.current(true);
     } else {
       setMultiplier(currentMult);
       requestRef.current = requestAnimationFrame(tick);
@@ -113,6 +124,10 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
       setFeedback({ type: 'error', msg: 'Please enter a valid bet amount.' });
       return;
     }
+    if (autoCashout < 1.01 || isNaN(autoCashout)) {
+      setFeedback({ type: 'error', msg: 'Auto cashout must be at least 1.01×.' });
+      return;
+    }
 
     setLoading(true);
     setFeedback(null);
@@ -120,6 +135,8 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
     setWon(false);
     setMultiplier(1.0);
     setCrashPoint(null);
+    autoCashoutRef.current = autoCashout;
+    cashoutTriggeredRef.current = false;
 
     try {
       const r = await fetch('/api/game/crash/start', {
@@ -141,6 +158,7 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
       crashPointRef.current = decodedCrash;
       startTimeRef.current = Date.now();
       setGameActive(true);
+      gameActiveRef.current = true;
       triggerLaunchSound();
       refreshWallet();
 
@@ -153,8 +171,8 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
     }
   };
 
-  const handleCashout = async () => {
-    if (!gameActive || loading) return;
+  const handleCashout = async (automatic = false) => {
+    if (!gameActiveRef.current || loading) return;
 
     // Stop ticking on client immediately to lock the cashout rate
     if (requestRef.current) {
@@ -179,6 +197,7 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
       }
 
       setGameActive(false);
+      gameActiveRef.current = false;
       if (d.crashed) {
         setCrashed(true);
         setCrashPoint(d.crashPoint || 1.0);
@@ -191,7 +210,7 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
         triggerCashoutSound();
         setFeedback({
           type: 'success',
-          msg: `🎉 Cashed out! Won ₹${d.winAmount}! (Multiplier: ${d.multiplier}x)`
+          msg: `${automatic ? 'Auto cashout complete!' : 'Cashed out!'} Won ₹${d.winAmount} at ${d.multiplier}×.`
         });
       }
       refreshWallet();
@@ -203,6 +222,8 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
       setLoading(false);
     }
   };
+
+  cashoutHandlerRef.current = handleCashout;
 
   // Clean up animation frames
   useEffect(() => {
@@ -254,6 +275,18 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
           </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-2">
+          <button disabled={gameActive} onClick={() => setBetAmount(Math.max(10, betAmount / 2))} className="rounded-xl border border-zinc-800 bg-zinc-900 py-2 text-xs font-black text-zinc-400 hover:text-white disabled:opacity-50">½ Bet</button>
+          <button disabled={gameActive} onClick={() => setBetAmount(betAmount * 2)} className="rounded-xl border border-zinc-800 bg-zinc-900 py-2 text-xs font-black text-zinc-400 hover:text-white disabled:opacity-50">2× Bet</button>
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-zinc-400"><label>Auto Cashout At</label><span className="font-mono text-amber-400">+{((autoCashout - 1) * 100).toFixed(0)}%</span></div>
+          <div className="flex items-center rounded-xl border border-zinc-800 bg-zinc-950 px-3"><input type="number" min="1.01" step="0.05" disabled={gameActive} value={autoCashout} onChange={e => setAutoCashout(Math.max(1.01, Number(e.target.value) || 1.01))} className="min-w-0 flex-1 bg-transparent py-3 font-mono text-sm font-bold text-white outline-none" /><span className="font-mono text-sm font-black text-amber-400">×</span></div>
+          <div className="mt-2 flex gap-1.5">{[1.25, 1.5, 2, 3].map(value => <button key={value} disabled={gameActive} onClick={() => setAutoCashout(value)} className="flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 font-mono text-xs font-bold text-zinc-400 hover:text-white disabled:opacity-50">{value.toFixed(2)}×</button>)}</div>
+          <div className="mt-2 flex justify-between rounded-xl border border-zinc-900 bg-zinc-950 px-3 py-2 font-mono text-[10px]"><span className="text-zinc-500">Target payout</span><span className="font-bold text-emerald-400">₹{(betAmount * autoCashout).toFixed(2)}</span></div>
+        </div>
+
         {/* Multiplier Stats Display */}
         <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex justify-between items-center">
           <div>
@@ -285,7 +318,7 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
           </button>
         ) : (
           <button
-            onClick={handleCashout}
+            onClick={() => handleCashout(false)}
             disabled={loading}
             className="w-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black uppercase py-3.5 rounded-xl text-xs tracking-wider transition active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
           >

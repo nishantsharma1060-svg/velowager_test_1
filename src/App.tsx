@@ -2291,13 +2291,13 @@ export default function App() {
 
   const filteredAdminUsers = adminUsers.filter((u) => {
     const query = adminSearchUser.trim().toLowerCase();
-    const matchesQuery = !query || [u.id, u.username, u.email, u.mobile].some(value => String(value || '').toLowerCase().includes(query));
+    const matchesQuery = !query || [u.id, u.username, u.email, u.mobile, u.signupIp].some(value => String(value || '').toLowerCase().includes(query));
     return matchesQuery && (adminUserStatusFilter === 'all' || u.status === adminUserStatusFilter);
   });
 
   const exportAdminUsersCsv = () => {
     const escape = (value: any) => `"${String(value ?? '').replace(/"/g, '""')}"`;
-    const rows = [['ID', 'Username', 'Email', 'Mobile', 'Status', 'Type', 'Balance'], ...filteredAdminUsers.map(u => [u.id, u.username, u.email, u.mobile, u.status, u.isAgent ? 'Agent' : 'Player', ((u.wallet?.balance ?? 0) + (u.wallet?.promoBalance ?? 0)).toFixed(2)])];
+    const rows = [['ID', 'Username', 'Email', 'Mobile', 'Signup IP', 'Same IP Accounts', 'Status', 'Type', 'Balance'], ...filteredAdminUsers.map(u => [u.id, u.username, u.email, u.mobile, u.signupIp || 'Unknown', u.sameIpAccountCount || 0, u.status, u.isAgent ? 'Agent' : 'Player', ((u.wallet?.balance ?? 0) + (u.wallet?.promoBalance ?? 0)).toFixed(2)])];
     const blob = new Blob([rows.map(row => row.map(escape).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a'); link.href = url; link.download = `velowager-users-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
@@ -5224,7 +5224,7 @@ export default function App() {
                         <div className="flex flex-wrap gap-2">
                         <input 
                           type="text" 
-                          placeholder="Search name, email, mobile or ID..."
+                          placeholder="Search name, email, mobile, ID or IP..."
                           value={adminSearchUser}
                           onChange={(e) => setAdminSearchUser(e.target.value)}
                           className="bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1 text-xs text-white placeholder-zinc-600 focus:outline-none"
@@ -5242,8 +5242,9 @@ export default function App() {
                             <tr className="border-b border-zinc-800 text-zinc-500 uppercase tracking-wider">
                               <th className="pb-2">User ID</th>
                               <th className="pb-2">User</th>
-                              <th className="pb-2">Type</th>
-                              <th className="pb-2">Wallet Bal</th>
+                               <th className="pb-2">Type</th>
+                               <th className="pb-2">Signup IP</th>
+                               <th className="pb-2">Wallet Bal</th>
                               <th className="pb-2">Wagering Status</th>
                               <th className="pb-2">VIP Tier</th>
                               <th className="pb-2">Access Status</th>
@@ -5272,6 +5273,12 @@ export default function App() {
                                         : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
                                     }`}>
                                       {u.isAgent ? 'Agent' : 'Player'}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 font-mono text-[10px] text-zinc-400 whitespace-nowrap">
+                                    <span className="block">{u.signupIp || 'Unknown'}</span>
+                                    <span className={`mt-0.5 inline-flex rounded border px-1.5 py-0.5 text-[9px] font-black ${u.sameIpAccountCount > 1 ? 'border-rose-500/30 bg-rose-500/10 text-rose-400' : 'border-zinc-700 bg-zinc-800 text-zinc-500'}`}>
+                                      {u.sameIpAccountCount || 0} {u.sameIpAccountCount === 1 ? 'ID' : 'IDs'} on IP
                                     </span>
                                   </td>
                                   <td className="py-2.5 font-mono text-zinc-300">₹{((u.wallet?.balance ?? 0) + (u.wallet?.promoBalance ?? 0)).toFixed(2)}</td>

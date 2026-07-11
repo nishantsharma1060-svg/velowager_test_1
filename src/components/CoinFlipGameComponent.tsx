@@ -189,11 +189,17 @@ export const CoinFlipGameComponent: React.FC<CoinFlipGameProps> = ({ token, refr
           </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-2">
+          <button disabled={flipping} onClick={() => setBetAmount(Math.max(10, betAmount / 2))} className="rounded-xl border border-zinc-800 bg-zinc-900 py-2 text-xs font-black text-zinc-400 hover:text-white disabled:opacity-50">½ Bet</button>
+          <button disabled={flipping} onClick={() => setBetAmount(betAmount * 2)} className="rounded-xl border border-zinc-800 bg-zinc-900 py-2 text-xs font-black text-zinc-400 hover:text-white disabled:opacity-50">2× Bet</button>
+        </div>
+
         {/* Potential Returns */}
         <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex justify-between items-center font-mono">
           <div>
-            <span className="text-[9px] font-black uppercase text-zinc-500 block">Payout Multiplier</span>
+            <span className="text-[9px] font-black uppercase text-zinc-500 block">Multiplier / Profit</span>
             <span className="text-base font-bold text-amber-400 block mt-0.5">1.90x</span>
+            <span className="text-[9px] font-bold text-zinc-500">+90%</span>
           </div>
           <div className="text-right">
             <span className="text-[9px] font-black uppercase text-zinc-500 block">Potential Win</span>
