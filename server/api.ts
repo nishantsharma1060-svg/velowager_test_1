@@ -54,12 +54,18 @@ const activeMinesGames = new Map<string, {
   minesCount: number;
   minePositions: number[];
   revealedPositions: number[];
-  forceLoss: boolean;
   multiplier: number;
   isActive: boolean;
   roundId: string;
   betId: string;
+  maxSafeGems: number;
+  maxMultiplier: number;
+  serverSeed: string;
+  serverSeedHash: string;
+  clientSeed: string;
+  nonce: number;
 }>();
+const minesActionLocks = new Set<string>();
 
 const activeCrashGames = new Map<string, {
   betAmount: number;
@@ -68,18 +74,40 @@ const activeCrashGames = new Map<string, {
   startTime: number;
   roundId: string;
   betId: string;
+  autoCashout: number;
+  serverSeed: string;
+  serverSeedHash: string;
+  clientSeed: string;
+  nonce: number;
+  settlementTimer?: ReturnType<typeof setTimeout>;
 }>();
+const completedCrashGames = new Map<string, any>();
+const crashSettlementLocks = new Set<string>();
+const CRASH_RTP = 0.97;
+const CRASH_GROWTH_RATE = 0.065;
+const CRASH_MAX_MULTIPLIER = 100;
+const CRASH_MIN_BET = 10;
+const CRASH_GLOBAL_MAX_BET = 1000;
+const CRASH_MAX_PAYOUT = 100000;
+
+function generateCrashPoint(serverSeed: string, clientSeed: string, nonce: number): number {
+  const digest = crypto.createHmac('sha256', serverSeed).update(`${clientSeed}:${nonce}`).digest();
+  const random52 = digest.readUIntBE(0, 6) * 16 + (digest[6] >> 4);
+  const uniform = random52 / 0x10000000000000;
+  return Math.min(CRASH_MAX_MULTIPLIER, Math.max(1, Math.floor((CRASH_RTP / (1 - uniform)) * 100) / 100));
+}
 
 const sportsBetPayoutLocks = new Set<string>();
 
 async function settleExpiredCrashSession(userId: string): Promise<boolean> {
   const active = activeCrashGames.get(userId);
   if (!active || !active.isActive) return false;
-  const multiplier = Math.exp(0.065 * ((Date.now() - active.startTime) / 1000));
+  const multiplier = Math.exp(CRASH_GROWTH_RATE * ((Date.now() - active.startTime) / 1000));
   if (multiplier < active.crashPoint) return false;
 
   // Delete first so duplicate browser requests cannot settle the same game twice.
   active.isActive = false;
+  if (active.settlementTimer) clearTimeout(active.settlementTimer);
   activeCrashGames.delete(userId);
   await gameRepo.updateBetSettlement(active.betId, 'lost', 0, 0);
   await gameRepo.updateRound(active.roundId, {
@@ -88,6 +116,7 @@ async function settleExpiredCrashSession(userId: string): Promise<boolean> {
     status: 'settled',
     settledAt: new Date().toISOString()
   });
+  completedCrashGames.set(userId, { status: 'CRASHED', roundId: active.roundId, crashPoint: active.crashPoint, multiplier: active.crashPoint, payout: 0, serverSeed: active.serverSeed, serverSeedHash: active.serverSeedHash, clientSeed: active.clientSeed, nonce: active.nonce, completedAt: Date.now() });
   return true;
 }
 
@@ -1647,6 +1676,12 @@ router.post('/user/notifications/read-all', authenticateToken, async (req: Authe
 // ==========================================
 
 // Helper to calculate mines multiplier
+const MINES_RTP = 0.97;
+const MINES_MIN_BET = 10;
+const MINES_GLOBAL_MAX_BET = 1000;
+const MINES_MAX_PAYOUT = 100000;
+const MINES_MAX_SAFE_GEMS: Record<number, number> = { 1:24, 2:21, 3:18, 4:15, 5:13, 6:11, 7:10, 8:8, 9:7, 10:7, 11:6, 12:5, 13:5, 14:4, 15:4, 16:3, 17:3, 18:3, 19:2, 20:2, 21:2, 22:1, 23:1, 24:1 };
+
 function getMinesMultiplier(minesCount: number, revealedCount: number): number {
   if (revealedCount === 0) return 1.0;
   let prob = 1.0;
@@ -1654,8 +1689,39 @@ function getMinesMultiplier(minesCount: number, revealedCount: number): number {
     prob *= (25 - minesCount - i) / (25 - i);
   }
   const fair = 1 / prob;
-  // Apply 5% house edge
-  return Number((fair * 0.95).toFixed(2));
+  // Round down so the displayed and paid multiplier can never exceed 97% RTP.
+  return Math.floor(fair * MINES_RTP * 100) / 100;
+}
+
+function generateProvablyFairMines(serverSeed: string, clientSeed: string, nonce: number, mineCount: number): number[] {
+  const tiles = Array.from({ length: 25 }, (_, index) => index);
+  let cursor = 0;
+  let block = 0;
+  let bytes = Buffer.alloc(0);
+  const nextUInt32 = () => {
+    if (cursor + 4 > bytes.length) {
+      bytes = crypto.createHmac('sha256', serverSeed).update(`${clientSeed}:${nonce}:${block++}`).digest();
+      cursor = 0;
+    }
+    const value = bytes.readUInt32BE(cursor);
+    cursor += 4;
+    return value;
+  };
+  for (let i = tiles.length - 1; i > 0; i--) {
+    const limit = Math.floor(0x100000000 / (i + 1)) * (i + 1);
+    let value = nextUInt32();
+    while (value >= limit) value = nextUInt32();
+    const j = value % (i + 1);
+    [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+  }
+  return tiles.slice(0, mineCount).sort((a, b) => a - b);
+}
+
+function getMinesPublicConfig(mineCount: number) {
+  const maxSafeGems = MINES_MAX_SAFE_GEMS[mineCount];
+  const maxMultiplier = getMinesMultiplier(mineCount, maxSafeGems);
+  const maximumAllowedBet = Math.min(MINES_GLOBAL_MAX_BET, Math.floor(MINES_MAX_PAYOUT / maxMultiplier));
+  return { rtp: 97, houseEdge: 3, minBet: MINES_MIN_BET, globalMaxBet: MINES_GLOBAL_MAX_BET, maximumAllowedBet, maximumPayout: MINES_MAX_PAYOUT, maxSafeGems, maxMultiplier };
 }
 
 // Get lists of all games
@@ -1952,7 +2018,7 @@ router.post('/game/flip/play', authenticateToken, async (req: AuthenticatedReque
 // MINES GAME ENDPOINTS
 // ==========================================
 router.post('/game/mines/start', authenticateToken, async (req: AuthenticatedRequest, res) => {
-  const { betAmount, minesCount } = req.body;
+  const { betAmount, minesCount, clientSeed: requestedClientSeed } = req.body;
   if (!betAmount || isNaN(betAmount) || betAmount <= 0) {
     res.status(400).json({ error: 'Invalid bet amount specified' });
     return;
@@ -1962,6 +2028,7 @@ router.post('/game/mines/start', authenticateToken, async (req: AuthenticatedReq
     res.status(400).json({ error: 'Mines count must be between 1 and 24' });
     return;
   }
+  const minesConfig = getMinesPublicConfig(mines);
 
   // Check if Mines is enabled
   const gameInfo = await gameRepo.getGameById('mine');
@@ -1970,8 +2037,8 @@ router.post('/game/mines/start', authenticateToken, async (req: AuthenticatedReq
     return;
   }
 
-  if (betAmount < gameInfo.minBet || betAmount > gameInfo.maxBet) {
-    res.status(400).json({ error: `Bet amount must be between ₹${gameInfo.minBet} and ₹${gameInfo.maxBet}` });
+  if (betAmount < minesConfig.minBet || betAmount > minesConfig.maximumAllowedBet) {
+    res.status(400).json({ error: `Bet amount must be between ₹${minesConfig.minBet} and ₹${minesConfig.maximumAllowedBet} for ${mines} mines` });
     return;
   }
 
@@ -1990,17 +2057,11 @@ router.post('/game/mines/start', authenticateToken, async (req: AuthenticatedReq
   }
 
   try {
-    // Non-WinGo games use a 60% win / 40% loss probability.
-    const forceLoss = Math.random() < 0.4;
-
-    // Generate random mine positions (0-24)
-    const indices = Array.from({ length: 25 }, (_, i) => i);
-    // Shuffle
-    for (let i = indices.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [indices[i], indices[j]] = [indices[j], indices[i]];
-    }
-    const minePositions = indices.slice(0, mines);
+    const serverSeed = crypto.randomBytes(32).toString('hex');
+    const serverSeedHash = crypto.createHash('sha256').update(serverSeed).digest('hex');
+    const clientSeed = typeof requestedClientSeed === 'string' && requestedClientSeed.trim() ? requestedClientSeed.trim().slice(0, 128) : crypto.randomBytes(16).toString('hex');
+    const nonce = crypto.randomBytes(4).readUInt32BE(0);
+    const minePositions = generateProvablyFairMines(serverSeed, clientSeed, nonce, mines);
 
     // Deduct bet
     await walletService.deductBet(req.user.id, 'mine', betAmount, `Mines Game started with ${mines} mines`);
@@ -2011,7 +2072,7 @@ router.post('/game/mines/start', authenticateToken, async (req: AuthenticatedReq
       gameMode: `${mines}-mines`,
       periodNumber: 'INSTANT-' + Date.now(),
       status: 'betting',
-      resultStrategy: forceLoss ? 'high_profit' : 'fair'
+      resultStrategy: 'fair'
     });
 
     // Create Bet
@@ -2032,11 +2093,16 @@ router.post('/game/mines/start', authenticateToken, async (req: AuthenticatedReq
       minesCount: mines,
       minePositions,
       revealedPositions: [],
-      forceLoss,
       multiplier: 1.0,
       isActive: true,
       roundId: round.id,
-      betId: bet.id
+      betId: bet.id,
+      maxSafeGems: minesConfig.maxSafeGems,
+      maxMultiplier: minesConfig.maxMultiplier,
+      serverSeed,
+      serverSeedHash,
+      clientSeed,
+      nonce
     });
 
     res.json({
@@ -2047,7 +2113,11 @@ router.post('/game/mines/start', authenticateToken, async (req: AuthenticatedReq
       minesCount: mines,
       revealedPositions: [],
       currentMultiplier: 1.0,
-      isActive: true
+      isActive: true,
+      serverSeedHash,
+      clientSeed,
+      nonce,
+      config: minesConfig
     });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -2072,31 +2142,14 @@ router.post('/game/mines/reveal', authenticateToken, async (req: AuthenticatedRe
     res.status(400).json({ error: 'Tile is already revealed' });
     return;
   }
+  if (minesActionLocks.has(req.user.id)) {
+    res.status(409).json({ error: 'Another Mines action is already being processed' });
+    return;
+  }
 
+  minesActionLocks.add(req.user.id);
   try {
-    // If forced to lose, we dynamically turn this tile into a mine!
-    let hitMine = false;
-    if (activeGame.forceLoss) {
-      hitMine = true;
-      if (!activeGame.minePositions.includes(tilePos)) {
-        // Swap tilePos with the first mine to guarantee a hit without increasing total mine count
-        activeGame.minePositions[0] = tilePos;
-      }
-    } else {
-      // Winning Mines sessions keep selected tiles safe so the player can cash out.
-      hitMine = false;
-      const selectedMineIndex = activeGame.minePositions.indexOf(tilePos);
-      if (selectedMineIndex !== -1) {
-        const replacement = Array.from({ length: 25 }, (_, i) => i).find(i =>
-          i !== tilePos &&
-          !activeGame.minePositions.includes(i) &&
-          !activeGame.revealedPositions.includes(i)
-        );
-        if (replacement !== undefined) {
-          activeGame.minePositions[selectedMineIndex] = replacement;
-        }
-      }
-    }
+    const hitMine = activeGame.minePositions.includes(tilePos);
 
     if (hitMine) {
       // EXPLODED!
@@ -2126,6 +2179,7 @@ router.post('/game/mines/reveal', authenticateToken, async (req: AuthenticatedRe
         currentMultiplier: 0,
         isActive: false,
         message: 'BOOM! You hit a mine. Better luck next time!'
+        ,fairness: { serverSeed: activeGame.serverSeed, serverSeedHash: activeGame.serverSeedHash, clientSeed: activeGame.clientSeed, nonce: activeGame.nonce }
       });
     } else {
       // Safe reveal!
@@ -2133,19 +2187,17 @@ router.post('/game/mines/reveal', authenticateToken, async (req: AuthenticatedRe
       const newMultiplier = getMinesMultiplier(activeGame.minesCount, activeGame.revealedPositions.length);
       activeGame.multiplier = newMultiplier;
 
-      const totalGems = 25 - activeGame.minesCount;
-      const allCleared = activeGame.revealedPositions.length === totalGems;
+      const allCleared = activeGame.revealedPositions.length >= activeGame.maxSafeGems;
 
       if (allCleared) {
         // Auto cashout!
         activeGame.isActive = false;
         activeMinesGames.delete(req.user.id);
 
-        const payout = Number((activeGame.betAmount * newMultiplier).toFixed(2));
-        const settings = db.settings;
-        const winFeePercent = settings.winningFeePercent || 2;
-        const winFee = Number(((payout * winFeePercent) / 100).toFixed(2));
-        const winAmount = payout - winFee;
+        const payoutCents = Math.min(Math.floor(activeGame.betAmount * 100 * newMultiplier), MINES_MAX_PAYOUT * 100);
+        const payout = payoutCents / 100;
+        const winFee = 0;
+        const winAmount = payout;
 
         await walletService.creditWinnings(req.user.id, 'mine', winAmount, `Mines Auto-Cashout Clear Win`);
         await gameRepo.updateBetSettlement(activeGame.betId, 'won', winAmount, winFee);
@@ -2170,7 +2222,10 @@ router.post('/game/mines/reveal', authenticateToken, async (req: AuthenticatedRe
           isActive: false,
           isCleared: true,
           minePositions: activeGame.minePositions,
-          message: `Perfect Clear! You cleared all safe gems and won ₹${winAmount}!`
+          message: `Automatic maximum payout reached. You won ₹${winAmount}!`,
+          status: 'AUTO_CASHED_OUT',
+          payout,
+          fairness: { serverSeed: activeGame.serverSeed, serverSeedHash: activeGame.serverSeedHash, clientSeed: activeGame.clientSeed, nonce: activeGame.nonce }
         });
       } else {
         // Continue game
@@ -2178,12 +2233,15 @@ router.post('/game/mines/reveal', authenticateToken, async (req: AuthenticatedRe
           exploded: false,
           revealedPositions: activeGame.revealedPositions,
           currentMultiplier: newMultiplier,
-          isActive: true
+          isActive: true,
+          maxSafeGems: activeGame.maxSafeGems
         });
       }
     }
   } catch (err: any) {
     res.status(400).json({ error: err.message });
+  } finally {
+    minesActionLocks.delete(req.user.id);
   }
 });
 
@@ -2198,16 +2256,21 @@ router.post('/game/mines/cashout', authenticateToken, async (req: AuthenticatedR
     res.status(400).json({ error: 'You must reveal at least one safe gem to cash out' });
     return;
   }
+  if (minesActionLocks.has(req.user.id)) {
+    res.status(409).json({ error: 'Another Mines action is already being processed' });
+    return;
+  }
 
+  minesActionLocks.add(req.user.id);
   try {
     activeGame.isActive = false;
     activeMinesGames.delete(req.user.id);
 
-    const payout = Number((activeGame.betAmount * activeGame.multiplier).toFixed(2));
-    const settings = db.settings;
-    const winFeePercent = settings.winningFeePercent || 2;
-    const winFee = Number(((payout * winFeePercent) / 100).toFixed(2));
-    const winAmount = payout - winFee;
+    const finalMultiplier = getMinesMultiplier(activeGame.minesCount, activeGame.revealedPositions.length);
+    const payoutCents = Math.min(Math.floor(activeGame.betAmount * 100 * finalMultiplier), MINES_MAX_PAYOUT * 100);
+    const payout = payoutCents / 100;
+    const winFee = 0;
+    const winAmount = payout;
 
     await walletService.creditWinnings(req.user.id, 'mine', winAmount, `Mines Cashout (Multiplier: ${activeGame.multiplier}x)`);
     await gameRepo.updateBetSettlement(activeGame.betId, 'won', winAmount, winFee);
@@ -2232,24 +2295,76 @@ router.post('/game/mines/cashout', authenticateToken, async (req: AuthenticatedR
       payout,
       winFee,
       winAmount,
-      multiplier: activeGame.multiplier,
+      multiplier: finalMultiplier,
       minePositions: activeGame.minePositions,
-      balance: updatedWallet.balance + updatedWallet.promoBalance
+      balance: updatedWallet.balance + updatedWallet.promoBalance,
+      status: 'CASHED_OUT',
+      fairness: { serverSeed: activeGame.serverSeed, serverSeedHash: activeGame.serverSeedHash, clientSeed: activeGame.clientSeed, nonce: activeGame.nonce }
     });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
+  } finally {
+    minesActionLocks.delete(req.user.id);
   }
+});
+
+router.post('/game/mines/verify', (req, res) => {
+  const { serverSeed, clientSeed, nonce, minesCount } = req.body;
+  const mines = Number(minesCount);
+  if (!serverSeed || !clientSeed || !Number.isInteger(Number(nonce)) || mines < 1 || mines > 24) {
+    res.status(400).json({ error: 'serverSeed, clientSeed, nonce and a valid minesCount are required' });
+    return;
+  }
+  res.json({
+    serverSeedHash: crypto.createHash('sha256').update(String(serverSeed)).digest('hex'),
+    minePositions: generateProvablyFairMines(String(serverSeed), String(clientSeed), Number(nonce), mines)
+  });
 });
 
 // ==========================================
 // CRASH GAME ENDPOINTS
 // ==========================================
+async function settleCrashCashout(userId: string, automatic: boolean): Promise<any> {
+  if (crashSettlementLocks.has(userId)) throw new Error('Crash settlement is already processing');
+  const active = activeCrashGames.get(userId);
+  if (!active || !active.isActive) throw new Error('No active Crash game session found');
+  crashSettlementLocks.add(userId);
+  try {
+    const elapsed = (Date.now() - active.startTime) / 1000;
+    const authoritativeMultiplier = automatic ? active.autoCashout : Math.floor(Math.exp(CRASH_GROWTH_RATE * elapsed) * 100) / 100;
+    // Equality loses: the crash must be strictly greater than the accepted cashout multiplier.
+    if (active.crashPoint <= authoritativeMultiplier) {
+      await settleExpiredCrashSession(userId);
+      return { crashed: true, ...completedCrashGames.get(userId) };
+    }
+    active.isActive = false;
+    if (active.settlementTimer) clearTimeout(active.settlementTimer);
+    activeCrashGames.delete(userId);
+    const payoutCents = Math.min(Math.floor(active.betAmount * 100 * authoritativeMultiplier), CRASH_MAX_PAYOUT * 100);
+    const payout = payoutCents / 100;
+    await walletService.creditWinnings(userId, 'crash', payout, `Crash ${automatic ? 'Auto-' : ''}Cashout at ${authoritativeMultiplier}x`);
+    await gameRepo.updateBetSettlement(active.betId, 'won', payout, 0);
+    await gameRepo.updateRound(active.roundId, { totalBetAmount: active.betAmount, totalWinAmount: payout, status: 'settled', settledAt: new Date().toISOString() });
+    const result = { crashed: false, status: 'CASHED_OUT', automatic, roundId: active.roundId, multiplier: authoritativeMultiplier, payout, winAmount: payout, crashPoint: active.crashPoint, serverSeed: active.serverSeed, serverSeedHash: active.serverSeedHash, clientSeed: active.clientSeed, nonce: active.nonce, completedAt: Date.now() };
+    completedCrashGames.set(userId, result);
+    return result;
+  } finally {
+    crashSettlementLocks.delete(userId);
+  }
+}
+
 router.post('/game/crash/start', authenticateToken, async (req: AuthenticatedRequest, res) => {
-  const { betAmount } = req.body;
+  const { betAmount, autoCashout, clientSeed: requestedClientSeed } = req.body;
+  const requestedAutoCashout = Number(autoCashout);
   if (!betAmount || isNaN(betAmount) || betAmount <= 0) {
     res.status(400).json({ error: 'Invalid bet amount specified' });
     return;
   }
+  if (!Number.isFinite(requestedAutoCashout) || requestedAutoCashout < 1.01 || requestedAutoCashout > CRASH_MAX_MULTIPLIER) {
+    res.status(400).json({ error: `Auto cashout must be between 1.01× and ${CRASH_MAX_MULTIPLIER.toFixed(2)}×` });
+    return;
+  }
+  const maximumAllowedBet = Math.min(CRASH_GLOBAL_MAX_BET, Math.floor(CRASH_MAX_PAYOUT / requestedAutoCashout));
 
   // Check if Crash is enabled
   const gameInfo = await gameRepo.getGameById('crash');
@@ -2258,7 +2373,7 @@ router.post('/game/crash/start', authenticateToken, async (req: AuthenticatedReq
     return;
   }
 
-  if (betAmount < gameInfo.minBet || betAmount > gameInfo.maxBet) {
+  if (betAmount < CRASH_MIN_BET || betAmount > maximumAllowedBet) {
     res.status(400).json({ error: `Bet amount must be between ₹${gameInfo.minBet} and ₹${gameInfo.maxBet}` });
     return;
   }
@@ -2285,17 +2400,11 @@ router.post('/game/crash/start', authenticateToken, async (req: AuthenticatedReq
   }
 
   try {
-    // Non-WinGo games use a 60% favorable round / 40% loss probability.
-    let crashPoint = 1.0;
-    if (Math.random() < 0.4) {
-      crashPoint = 1.0;
-    } else {
-      const E = Math.random();
-      // standard rocket crash formula
-      crashPoint = 0.95 / (1 - E);
-      if (crashPoint < 1.0) crashPoint = 1.0;
-      crashPoint = Number(crashPoint.toFixed(2));
-    }
+    const serverSeed = crypto.randomBytes(32).toString('hex');
+    const serverSeedHash = crypto.createHash('sha256').update(serverSeed).digest('hex');
+    const clientSeed = typeof requestedClientSeed === 'string' && requestedClientSeed.trim() ? requestedClientSeed.trim().slice(0, 128) : crypto.randomBytes(16).toString('hex');
+    const nonce = crypto.randomBytes(4).readUInt32BE(0);
+    const crashPoint = generateCrashPoint(serverSeed, clientSeed, nonce);
 
     // Deduct bet
     await walletService.deductBet(req.user.id, 'crash', betAmount, 'Crash game rocket start');
@@ -2321,21 +2430,41 @@ router.post('/game/crash/start', authenticateToken, async (req: AuthenticatedReq
       amount: betAmount
     });
 
-    activeCrashGames.set(req.user.id, {
+    const activeGame = {
       betAmount,
       crashPoint,
       isActive: true,
       startTime: Date.now(),
       roundId: round.id,
-      betId: bet.id
-    });
+      betId: bet.id,
+      autoCashout: requestedAutoCashout,
+      serverSeed,
+      serverSeedHash,
+      clientSeed,
+      nonce,
+      settlementTimer: undefined as ReturnType<typeof setTimeout> | undefined
+    };
+    activeCrashGames.set(req.user.id, activeGame);
+    completedCrashGames.delete(req.user.id);
+
+    const terminalMultiplier = crashPoint <= requestedAutoCashout ? crashPoint : requestedAutoCashout;
+    const settlementDelay = Math.max(0, Math.log(terminalMultiplier) / CRASH_GROWTH_RATE * 1000);
+    activeGame.settlementTimer = setTimeout(() => {
+      if (crashPoint <= requestedAutoCashout) void settleExpiredCrashSession(req.user.id).catch(console.error);
+      else void settleCrashCashout(req.user.id, true).catch(console.error);
+    }, settlementDelay + 10);
 
     res.json({
       success: true,
-      startTime: Date.now(),
+      startTime: activeGame.startTime,
       isActive: true,
       betAmount,
-      token: Buffer.from(crashPoint.toString()).toString('base64')
+      roundId: round.id,
+      serverSeedHash,
+      clientSeed,
+      nonce,
+      autoCashout: requestedAutoCashout,
+      config: { rtp: 97, houseEdge: 3, minBet: CRASH_MIN_BET, maximumAllowedBet, maximumMultiplier: CRASH_MAX_MULTIPLIER, maximumPayout: CRASH_MAX_PAYOUT, instantCrashSupported: true, equalityRule: 'Crash point equal to or below auto cashout loses' }
     });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -2343,79 +2472,10 @@ router.post('/game/crash/start', authenticateToken, async (req: AuthenticatedReq
 });
 
 router.post('/game/crash/cashout', authenticateToken, async (req: AuthenticatedRequest, res) => {
-  const active = activeCrashGames.get(req.user.id);
-  if (!active || !active.isActive) {
-    res.status(404).json({ error: 'No active Crash game session found' });
-    return;
-  }
-
   try {
-    active.isActive = false;
-    activeCrashGames.delete(req.user.id);
-
-    const elapsed = (Date.now() - active.startTime) / 1000;
-    // exponential rocket growth: multiplier = e^(0.065 * t)
-    const currentMultiplier = Number(Math.exp(0.065 * elapsed).toFixed(2));
-
-    if (currentMultiplier > active.crashPoint) {
-      // CRASHED BEFORE CASHOUT!
-      await gameRepo.updateBetSettlement(active.betId, 'lost', 0, 0);
-      await gameRepo.updateRound(active.roundId, {
-        totalBetAmount: active.betAmount,
-        totalWinAmount: 0,
-        status: 'settled',
-        settledAt: new Date().toISOString()
-      });
-
-      // Referral Commission
-      const fullUser = db.users.find(u => u.id === req.user.id);
-      const lostBet = db.bets.find(b => b.id === active.betId);
-      if (lostBet) {
-        await handleReferralCommission(lostBet, fullUser);
-      }
-
-      res.json({
-        crashed: true,
-        crashPoint: active.crashPoint,
-        message: `Too late! The rocket crashed at ${active.crashPoint}x`
-      });
-    } else {
-      // CASHED OUT SUCCESSFULLY!
-      const payout = Number((active.betAmount * currentMultiplier).toFixed(2));
-      const settings = db.settings;
-      const winFeePercent = settings.winningFeePercent || 2;
-      const winFee = Number(((payout * winFeePercent) / 100).toFixed(2));
-      const winAmount = payout - winFee;
-
-      await walletService.creditWinnings(req.user.id, 'crash', winAmount, `Crash Rocket Cashout at ${currentMultiplier}x`);
-      await gameRepo.updateBetSettlement(active.betId, 'won', winAmount, winFee);
-      await gameRepo.updateRound(active.roundId, {
-        totalBetAmount: active.betAmount,
-        totalWinAmount: winAmount,
-        status: 'settled',
-        settledAt: new Date().toISOString()
-      });
-
-      // Referral Commission
-      const fullUser = db.users.find(u => u.id === req.user.id);
-      const wonBet = db.bets.find(b => b.id === active.betId);
-      if (wonBet) {
-        await handleReferralCommission(wonBet, fullUser);
-      }
-
-      const updatedWallet = await walletService.getBalance(req.user.id);
-
-      res.json({
-        crashed: false,
-        multiplier: currentMultiplier,
-        payout,
-        winFee,
-        winAmount,
-        balance: updatedWallet.balance + updatedWallet.promoBalance
-      });
-    }
+    res.json(await settleCrashCashout(req.user.id, false));
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    res.status(err.message.includes('No active') ? 404 : 409).json({ error: err.message });
   }
 });
 
@@ -2428,6 +2488,28 @@ router.post('/game/crash/resolve', authenticateToken, async (req: AuthenticatedR
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+router.get('/game/crash/status', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  const active = activeCrashGames.get(req.user.id);
+  if (active?.isActive) {
+    const authoritativeMultiplier = Math.floor(Math.exp(CRASH_GROWTH_RATE * ((Date.now() - active.startTime) / 1000)) * 100) / 100;
+    if (authoritativeMultiplier >= active.crashPoint) await settleExpiredCrashSession(req.user.id);
+    else {
+      res.json({ status: 'RUNNING', isActive: true, roundId: active.roundId, multiplier: Math.min(authoritativeMultiplier, CRASH_MAX_MULTIPLIER), serverTime: Date.now(), startTime: active.startTime, serverSeedHash: active.serverSeedHash, autoCashout: active.autoCashout });
+      return;
+    }
+  }
+  res.json(completedCrashGames.get(req.user.id) || { status: 'WAITING', isActive: false });
+});
+
+router.post('/game/crash/verify', (req, res) => {
+  const { serverSeed, clientSeed, nonce } = req.body;
+  if (!serverSeed || !clientSeed || !Number.isInteger(Number(nonce))) {
+    res.status(400).json({ error: 'serverSeed, clientSeed and nonce are required' });
+    return;
+  }
+  res.json({ serverSeedHash: crypto.createHash('sha256').update(String(serverSeed)).digest('hex'), crashPoint: generateCrashPoint(String(serverSeed), String(clientSeed), Number(nonce)) });
 });
 
 
