@@ -19,10 +19,7 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
   const [won, setWon] = useState<boolean>(false);
   const [winAmount, setWinAmount] = useState<number>(0);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
-  const [clientSeed, setClientSeed] = useState<string>(() => crypto.randomUUID());
-  const [serverSeedHash, setServerSeedHash] = useState('');
-  const [roundId, setRoundId] = useState('');
-  const [fairness, setFairness] = useState<any | null>(null);
+  const [clientSeed] = useState<string>(() => crypto.randomUUID());
 
   const requestRef = useRef<number | null>(null);
   const startTimeRef = useRef<number | null>(null);
@@ -109,7 +106,6 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
     setWon(false);
     setMultiplier(1.0);
     setCrashPoint(null);
-    setFairness(null);
 
     try {
       const r = await fetch('/api/game/crash/start', {
@@ -127,8 +123,6 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
       }
 
       startTimeRef.current = d.startTime;
-      setServerSeedHash(d.serverSeedHash || '');
-      setRoundId(d.roundId || '');
       setGameActive(true);
       gameActiveRef.current = true;
       triggerLaunchSound();
@@ -185,7 +179,6 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
           msg: `Cashed out! Won ₹${d.winAmount} at ${d.multiplier}×.`
         });
       }
-      setFairness(d);
       refreshWallet();
     } catch (e: any) {
       setFeedback({ type: 'error', msg: e.message });
@@ -209,7 +202,6 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
         setMultiplier(data.multiplier || data.crashPoint || 1);
         setCrashPoint(data.crashPoint || null);
-        setFairness(data);
         if (data.status === 'CRASHED') {
           setCrashed(true);
           triggerCrashSound();
@@ -290,8 +282,6 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
           <div className="mt-2 flex justify-between rounded-xl border border-zinc-900 bg-zinc-950 px-3 py-2 font-mono text-[10px]"><span className="text-zinc-500">Target payout</span><span className="font-bold text-emerald-400">₹{(betAmount * autoCashout).toFixed(2)}</span></div>
         </div>
 
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-[9px]"><span className="text-zinc-500">RTP <b className="float-right text-emerald-400">97%</b></span><span className="text-zinc-500">House edge <b className="float-right text-rose-400">3%</b></span><span className="text-zinc-500">Bet range <b className="float-right text-white">₹10–₹1,000</b></span><span className="text-zinc-500">Maximum payout <b className="float-right text-white">₹100,000</b></span><span className="col-span-2 text-zinc-500">Maximum multiplier <b className="float-right text-amber-400">100.00×</b></span><p className="col-span-2 border-t border-zinc-900 pt-2 leading-relaxed text-zinc-600">Instant crashes at 1.00× are possible. A crash point equal to or below your auto-cashout target loses.</p></div>
-        <div><label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-zinc-400">Client Seed</label><input disabled={gameActive} value={clientSeed} onChange={event => setClientSeed(event.target.value)} className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-[10px] text-zinc-300 outline-none" />{serverSeedHash && <p className="mt-2 break-all font-mono text-[8px] text-zinc-600">Server commitment: {serverSeedHash}</p>}</div>
 
         {/* Multiplier Stats Display */}
         <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex justify-between items-center">
@@ -342,7 +332,6 @@ export const CrashGameComponent: React.FC<CrashGameProps> = ({ token, refreshWal
             <span>{feedback.msg}</span>
           </div>
         )}
-        {fairness && <details className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 font-mono text-[9px] text-zinc-500"><summary className="cursor-pointer font-black uppercase text-emerald-400">Provably fair result</summary><div className="mt-2 space-y-1 break-all"><p>Round: {fairness.roundId || roundId}</p><p>Crash point: {fairness.crashPoint}×</p><p>Server seed: {fairness.serverSeed}</p><p>Hash: {fairness.serverSeedHash}</p><p>Client seed: {fairness.clientSeed}</p><p>Nonce: {fairness.nonce}</p></div></details>}
       </div>
 
       {/* Graphical flight simulator canvas stage */}

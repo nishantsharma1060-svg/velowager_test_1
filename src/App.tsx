@@ -653,7 +653,7 @@ export default function App() {
 
   // Instant games states
   const [gamesList, setGamesList] = useState<any[]>([]);
-  const [selectedGameTab, setSelectedGameTab] = useState<'wingo' | 'mines' | 'crash' | 'flip' | 'wheel'>('wingo');
+  const [selectedGameTab, setSelectedGameTab] = useState<'wingo' | 'mines' | 'crash' | 'flip'>('wingo');
   const [showGameLobby, setShowGameLobby] = useState(true);
 
   // Auto-shift to the first enabled game if current tab is disabled
@@ -663,8 +663,7 @@ export default function App() {
         { id: 'wingo', gameId: 'color-trading' },
         { id: 'mines', gameId: 'mine' },
         { id: 'crash', gameId: 'crash' },
-        { id: 'flip', gameId: 'flip' },
-        { id: 'wheel', gameId: 'wheel' }
+        { id: 'flip', gameId: 'flip' }
       ].find(m => m.id === selectedGameTab);
 
       if (currentMapping) {
@@ -674,8 +673,7 @@ export default function App() {
             { id: 'wingo', gameId: 'color-trading' },
             { id: 'mines', gameId: 'mine' },
             { id: 'crash', gameId: 'crash' },
-            { id: 'flip', gameId: 'flip' },
-            { id: 'wheel', gameId: 'wheel' }
+            { id: 'flip', gameId: 'flip' }
           ].find(m => {
             const dbGame = gamesList.find(g => g.id === m.gameId);
             return dbGame ? dbGame.isEnabled : true;
@@ -3514,8 +3512,7 @@ export default function App() {
                           { id: 'wingo', gameId: 'color-trading', name: 'WinGo Color', icon: '🎨', players: 1284, description: 'Predict colors and numbers in rapid timed draws.', accent: 'from-purple-500/25 to-fuchsia-500/5' },
                           { id: 'mines', gameId: 'mine', name: 'Mines Arcade', icon: '💣', players: 876, description: 'Reveal safe tiles and cash out before finding a mine.', accent: 'from-emerald-500/20 to-cyan-500/5' },
                           { id: 'crash', gameId: 'crash', name: 'Crash Multiplier', icon: '🚀', players: 1542, description: 'Cash out while the live multiplier keeps climbing.', accent: 'from-orange-500/20 to-rose-500/5' },
-                          { id: 'flip', gameId: 'flip', name: 'Coin Flip', icon: '🪙', players: 643, description: 'Choose heads or tails for a fast instant result.', accent: 'from-amber-500/20 to-yellow-500/5' },
-                          { id: 'wheel', gameId: 'wheel', name: 'Lucky Spin', icon: '🎡', players: 391, description: 'Spin the daily reward wheel and reveal your prize.', accent: 'from-blue-500/20 to-purple-500/5' }
+                          { id: 'flip', gameId: 'flip', name: 'Coin Flip', icon: '🪙', players: 643, description: 'Choose heads or tails for a fast instant result.', accent: 'from-amber-500/20 to-yellow-500/5' }
                         ].filter(game => {
                           const status = gamesList.find(item => item.id === game.gameId);
                           return status ? status.isEnabled : true;
@@ -3546,8 +3543,7 @@ export default function App() {
                         { id: 'wingo', name: '🎨 WinGo Color', gameId: 'color-trading' },
                         { id: 'mines', name: '💣 Mines Arcade', gameId: 'mine' },
                         { id: 'crash', name: '🚀 Crash Multiplier', gameId: 'crash' },
-                        { id: 'flip', name: '🪙 Coin Flip', gameId: 'flip' },
-                        { id: 'wheel', name: '🎡 Lucky Spin', gameId: 'wheel' }
+                        { id: 'flip', name: '🪙 Coin Flip', gameId: 'flip' }
                       ].filter((tg) => {
                         const gState = gamesList.find(x => x.id === tg.gameId);
                         return gState ? gState.isEnabled : true;
@@ -3965,10 +3961,6 @@ export default function App() {
 
               {selectedGameTab === 'flip' && (
                 <CoinFlipGameComponent token={token} refreshWallet={fetchWallet} />
-              )}
-
-              {selectedGameTab === 'wheel' && (
-                <LuckyWheelComponent token={token} refreshWallet={fetchWallet} />
               )}
 
               {/* STAKE.COM LIVE SESSION STATS TRACKER */}
@@ -8033,6 +8025,14 @@ export default function App() {
                       );
                     })()
                   )}
+
+                  <div className="mt-2">
+                    <div className="mb-3 flex items-center gap-2 px-1">
+                      <Gift className="h-4 w-4 text-amber-400" />
+                      <div><h3 className="text-sm font-black uppercase tracking-wider text-zinc-300">VIP Daily Lucky Spin</h3><p className="text-[10px] text-zinc-500">Your daily loyalty reward wheel</p></div>
+                    </div>
+                    <LuckyWheelComponent token={token} refreshWallet={fetchWallet} />
+                  </div>
 
                   {/* Future games portfolio preview */}
                   <div className="bg-[#12161b] border border-zinc-800 rounded-2xl p-6 shadow-xl">
