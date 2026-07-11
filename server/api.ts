@@ -1843,26 +1843,15 @@ router.post('/game/flip/play', authenticateToken, async (req: AuthenticatedReque
   }
 
   try {
-    // Condition check: if bet is > 20% of total balance, force loss!
-    let forceLoss = false;
-    if (betAmount > totalBalance * 0.2) {
-      forceLoss = true;
-    }
+    // Non-WinGo games use a 60% win / 40% loss probability.
+    const forceLoss = Math.random() < 0.4;
 
     // Determine the result of flip
     let result: 'heads' | 'tails';
     if (forceLoss) {
       result = predLower === 'heads' ? 'tails' : 'heads';
     } else {
-      // 5% house edge on outcomes. Set coin flip win rate to 47.5% (5% edge on probability)
-      const randomVal = Math.random();
-      if (randomVal < 0.05) {
-        // Force loss 5% of the time (House Edge)
-        result = predLower === 'heads' ? 'tails' : 'heads';
-      } else {
-        // Standard random flip
-        result = Math.random() < 0.5 ? 'heads' : 'tails';
-      }
+      result = predLower as 'heads' | 'tails';
     }
 
     const won = result === predLower;
@@ -1995,16 +1984,8 @@ router.post('/game/mines/start', authenticateToken, async (req: AuthenticatedReq
   }
 
   try {
-    // Condition check: if bet is > 30% of total balance, force loss!
-    let forceLoss = false;
-    if (betAmount > totalBalance * 0.3) {
-      forceLoss = true;
-    }
-
-    // 5% house edge chance of forced loss
-    if (Math.random() < 0.05) {
-      forceLoss = true;
-    }
+    // Non-WinGo games use a 60% win / 40% loss probability.
+    const forceLoss = Math.random() < 0.4;
 
     // Generate random mine positions (0-24)
     const indices = Array.from({ length: 25 }, (_, i) => i);
@@ -2096,7 +2077,19 @@ router.post('/game/mines/reveal', authenticateToken, async (req: AuthenticatedRe
         activeGame.minePositions[0] = tilePos;
       }
     } else {
-      hitMine = activeGame.minePositions.includes(tilePos);
+      // Winning Mines sessions keep selected tiles safe so the player can cash out.
+      hitMine = false;
+      const selectedMineIndex = activeGame.minePositions.indexOf(tilePos);
+      if (selectedMineIndex !== -1) {
+        const replacement = Array.from({ length: 25 }, (_, i) => i).find(i =>
+          i !== tilePos &&
+          !activeGame.minePositions.includes(i) &&
+          !activeGame.revealedPositions.includes(i)
+        );
+        if (replacement !== undefined) {
+          activeGame.minePositions[selectedMineIndex] = replacement;
+        }
+      }
     }
 
     if (hitMine) {
@@ -2286,12 +2279,10 @@ router.post('/game/crash/start', authenticateToken, async (req: AuthenticatedReq
   }
 
   try {
-    // 5% house edge instant crash + random crash point distribution
+    // Non-WinGo games use a 60% favorable round / 40% loss probability.
     let crashPoint = 1.0;
-    if (betAmount > totalBalance * 0.2) {
-      crashPoint = 1.01;
-    } else if (Math.random() < 0.05) {
-      crashPoint = 1.0; // Instant crash! (representing 5% house edge)
+    if (Math.random() < 0.4) {
+      crashPoint = 1.0;
     } else {
       const E = Math.random();
       // standard rocket crash formula
